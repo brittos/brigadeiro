@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Brigadeiro
+Comment=Brigradeiro Player application for the COSMIC™ desktop
+Type=Application
+Icon=io.github.brittos.brigadeiro
+Exec=brigadeiro %F
+Terminal=false
+StartupNotify=true
+Categories=COSMIC;AudioVideo;Player;
+Keywords=Audio;Music;Sound;
+MimeType=application/ogg;application/x-ogg;application/x-mpegurl;audio/mpeg;audio/ogg;audio/x-m4a;audio/x-mpegurl;audio/x-ms-wma;audio/x-ms-wmv;audio/quicktime;audio/webm;audio/x-matroska;

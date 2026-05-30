@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.brittos.brigadeiro</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0</project_license>
+  <name>Brigadeiro</name>
+  <summary>Brigradeiro Player application for the COSMIC™ desktop</summary>
+  <icon type="remote" width="64" height="64" scale="1">
+    https://github.com/brittos/brigadeiro/raw/main/resources/icons/hicolor/scalable/apps/io.github.brittos.brigadeiro.svg
+  </icon>
+  <url type="vcs-browser">https://github.com/brittos/brigadeiro</url>
+  <launchable type="desktop-id">io.github.brittos.brigadeiro.desktop</launchable>
+  <provides>
+    <id>io.github.brittos.brigadeiro</id>
+    <binaries>
+      <binary>brigadeiro</binary>
+    </binaries>
+  </provides>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Player</category>
+  </categories>
+  <keywords>
+    <keyword>Music</keyword>
+    <keyword>Player</keyword>
+  </keywords>
+  <content_rating type="oars-1.1" />
+</component>
+
