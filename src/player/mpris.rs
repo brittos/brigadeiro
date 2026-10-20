@@ -258,7 +258,7 @@ pub fn to_mpris_status(state: PlaybackState) -> PlaybackStatus {
     match state {
         PlaybackState::Playing => PlaybackStatus::Playing,
         PlaybackState::Paused => PlaybackStatus::Paused,
-        PlaybackState::Stopped | PlaybackState::Loading => PlaybackStatus::Stopped,
+        PlaybackState::Stopped => PlaybackStatus::Stopped,
     }
 }
 

@@ -19,22 +19,27 @@ pub struct Track {
     /// Album name
     pub album: String,
     /// Genre
+    #[allow(dead_code)] // preenchido pelo banco, a tela ainda não lê
     pub genre: Option<String>,
     /// Release date/year
+    #[allow(dead_code)] // preenchido pelo banco, a tela ainda não lê
     pub date: Option<String>,
     /// Track number within the disc
     pub track_number: Option<u32>,
     /// Disc number
+    #[allow(dead_code)] // preenchido pelo banco, a tela ainda não lê
     pub disc_number: Option<u32>,
     /// Duration in seconds
     pub duration: f64,
     /// File path
     pub uri: PathBuf,
     /// File type/extension (e.g., ".mp3", ".flac")
+    #[allow(dead_code)] // preenchido pelo banco, a tela ainda não lê
     pub file_type: String,
     /// Reference to album ID
     pub album_id: Option<i64>,
     /// Reference to artist ID
+    #[allow(dead_code)] // preenchido pelo banco, a tela ainda não lê
     pub artist_id: Option<i64>,
     /// Reference to cover art ID
     /// Reference to cover art ID
@@ -50,26 +55,6 @@ pub struct Track {
 }
 
 impl Track {
-    /// Create a new track with the given title and uri
-    #[must_use]
-    pub fn new(title: String, uri: PathBuf) -> Self {
-        Self {
-            title,
-            uri,
-            ..Default::default()
-        }
-    }
-
-    /// Get formatted duration as "M:SS"
-    #[must_use]
-    pub fn duration_string(&self) -> String {
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let total_secs = self.duration.max(0.0) as u32; // Safe: duration is non-negative
-        let minutes = total_secs / 60;
-        let seconds = total_secs % 60;
-        format!("{minutes}:{seconds:02}")
-    }
-
     /// Get the display artist (`album_artist` if available, otherwise artist)
     #[must_use]
     pub fn display_artist(&self) -> &str {

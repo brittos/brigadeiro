@@ -18,8 +18,10 @@ pub struct Playlist {
     /// Optional description
     pub description: Option<String>,
     /// Creation timestamp
+    #[allow(dead_code)] // preenchido pelo banco, a tela ainda não lê
     pub created_at: DateTime<Utc>,
     /// Last modified timestamp
+    #[allow(dead_code)] // preenchido pelo banco, a tela ainda não lê
     pub modified_at: DateTime<Utc>,
     /// Track IDs in order
     pub track_ids: Vec<i64>,
@@ -40,15 +42,6 @@ impl Default for Playlist {
 }
 
 impl Playlist {
-    /// Create a new playlist with the given title
-    #[must_use]
-    pub fn new(title: String) -> Self {
-        Self {
-            title,
-            ..Default::default()
-        }
-    }
-
     /// Build the synthetic "Favorites" collection
     #[must_use]
     pub fn favorites(title: String) -> Self {
@@ -69,17 +62,5 @@ impl Playlist {
     #[must_use]
     pub fn track_count(&self) -> usize {
         self.track_ids.len()
-    }
-
-    /// Add a track to the playlist
-    pub fn add_track(&mut self, track_id: i64) {
-        self.track_ids.push(track_id);
-        self.modified_at = Utc::now();
-    }
-
-    /// Remove a track from the playlist
-    pub fn remove_track(&mut self, track_id: i64) {
-        self.track_ids.retain(|&id| id != track_id);
-        self.modified_at = Utc::now();
     }
 }
