@@ -4,6 +4,10 @@
 
 use chrono::{DateTime, Utc};
 
+/// Synthetic id used by the built-in "Favorites" collection, which is not stored
+/// in the `Playlists` table but is rendered with the playlist detail page.
+pub const FAVORITES_PLAYLIST_ID: i64 = -1;
+
 /// Represents a playlist
 #[derive(Debug, Clone)]
 pub struct Playlist {
@@ -43,6 +47,22 @@ impl Playlist {
             title,
             ..Default::default()
         }
+    }
+
+    /// Build the synthetic "Favorites" collection
+    #[must_use]
+    pub fn favorites(title: String) -> Self {
+        Self {
+            id: FAVORITES_PLAYLIST_ID,
+            title,
+            ..Default::default()
+        }
+    }
+
+    /// Whether this is the built-in "Favorites" collection
+    #[must_use]
+    pub fn is_favorites(&self) -> bool {
+        self.id == FAVORITES_PLAYLIST_ID
     }
 
     /// Get track count
