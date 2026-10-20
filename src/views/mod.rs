@@ -9,6 +9,7 @@ pub mod playlists_page;
 pub mod queue_page;
 pub mod queue_sidebar;
 pub mod settings_dialog;
+pub mod track_actions;
 pub mod track_entry;
 pub mod tracks_page;
 

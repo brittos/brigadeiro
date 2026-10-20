@@ -5,6 +5,7 @@
 
 use crate::app::Message;
 use crate::model::track::Track;
+use crate::views::track_actions::{self, TrackActionsContext};
 use cosmic::Element;
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
@@ -128,7 +129,7 @@ fn view_sidebar_track_list<'a>(
     queue_position: usize,
     covers: &'a HashMap<i64, widget::image::Handle>,
     edit_mode: bool,
-    use_dark_text: bool,
+    ctx: TrackActionsContext<'_>,
 ) -> Element<'static, Message> {
     let track_rows: Vec<Element<'static, Message>> = queue_tracks
         .iter()
@@ -142,7 +143,7 @@ fn view_sidebar_track_list<'a>(
                 cover,
                 is_current,
                 edit_mode,
-                use_dark_text,
+                ctx,
             )
         })
         .collect();
@@ -181,13 +182,15 @@ fn view_sidebar_track_list<'a>(
 /// - `queue_position`: Current playing position
 /// - `covers`: `HashMap` of cover art handles
 /// - `edit_mode`: If true, show edit controls (move up/down, remove)
+/// - `ctx`: Shared context for the per-track action buttons
 pub fn view(
     queue_tracks: &[Arc<Track>],
     queue_position: usize,
     covers: &HashMap<i64, widget::image::Handle>,
     edit_mode: bool,
-    use_dark_text: bool,
+    ctx: TrackActionsContext<'_>,
 ) -> Element<'static, Message> {
+    let use_dark_text = ctx.use_dark_text;
     // Header row 1: Title + count
     let track_count = queue_tracks.len();
 
@@ -204,7 +207,7 @@ pub fn view(
         queue_position,
         covers,
         edit_mode,
-        use_dark_text,
+        ctx,
     );
 
     // Sidebar container
@@ -379,15 +382,17 @@ fn view_normal_mode_row(
     cover_widget: Element<'static, Message>,
     info_column: Element<'static, Message>,
     playing_icon: Element<'static, Message>,
+    actions: Element<'static, Message>,
     is_current: bool,
     use_dark_text: bool,
 ) -> Element<'static, Message> {
     let drag_cover = widget::dnd_source(cover_widget).drag_content(move || QueueItemMime(idx));
 
-    let row_content = widget::row::with_capacity(3)
+    let row_content = widget::row::with_capacity(4)
         .push(drag_cover)
         .push(info_column)
         .push(playing_icon)
+        .push(actions)
         .spacing(10)
         .padding([6, 12])
         .align_y(Alignment::Center);
@@ -422,8 +427,9 @@ fn queue_track_row(
     cover: Option<widget::image::Handle>,
     is_current: bool,
     edit_mode: bool,
-    use_dark_text: bool,
+    ctx: TrackActionsContext<'_>,
 ) -> Element<'static, Message> {
+    let use_dark_text = ctx.use_dark_text;
     let cover_widget = view_row_cover(cover);
 
     let playing_icon: Element<Message> = if is_current {
@@ -459,11 +465,13 @@ fn queue_track_row(
             use_dark_text,
         )
     } else {
+        let actions = track_actions::row_actions(track.id, track.favorite, ctx);
         view_normal_mode_row(
             idx,
             cover_widget,
             info_column,
             playing_icon,
+            actions,
             is_current,
             use_dark_text,
         )

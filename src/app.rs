@@ -17,6 +17,7 @@ use crate::views::artists_page::{self, ArtistData};
 use crate::views::control_bar;
 use crate::views::queue_sidebar;
 use crate::views::settings_dialog::{self, SettingsMessage, SettingsPage};
+use crate::views::track_actions::TrackActionsContext;
 use crate::views::tracks_page;
 use cosmic::cosmic_config::{self, CosmicConfigEntry};
 use cosmic::iced::alignment::{Horizontal, Vertical};
@@ -154,6 +155,8 @@ pub struct AppModel {
     playlist_tracks: Vec<crate::model::track::Track>,
     /// Playlists scroll Y
     playlists_scroll_y: f32,
+    /// Track id whose "Add to playlist" menu is open, if any
+    add_to_playlist_menu: Option<i64>,
 
     // Default cover art assets for fallback
     /// Default background image handle
@@ -287,6 +290,15 @@ pub enum Message {
 }
 
 impl AppModel {
+    /// Shared context for the per-track action buttons (favorite, add to playlist).
+    fn track_actions_ctx(&self) -> TrackActionsContext<'_> {
+        TrackActionsContext {
+            playlists: &self.library_playlists,
+            open_menu: self.add_to_playlist_menu,
+            use_dark_text: self.use_dark_text,
+        }
+    }
+
     /// Helper to group tracks into albums for display.
     fn refresh_albums(&self) -> Vec<AlbumData> {
         use std::collections::HashMap;
@@ -580,6 +592,7 @@ impl cosmic::Application for AppModel {
             playlist_edit_mode: false,
             playlist_tracks: Vec::new(),
             playlists_scroll_y: 0.0,
+            add_to_playlist_menu: None,
             default_background_image: background_image.clone(),
             default_background_image_dims: background_image_dims,
             default_theme_colors: (
@@ -782,8 +795,8 @@ impl cosmic::Application for AppModel {
                         &self.library_tracks,
                         &self.covers_cache,
                         current_path,
-                        self.use_dark_text,
                         self.tracks_scroll_offset,
+                        self.track_actions_ctx(),
                     )
                 }
                 NavPage::Albums => {
@@ -800,8 +813,8 @@ impl cosmic::Application for AppModel {
                                     album,
                                     &self.covers_cache,
                                     current_path.as_deref(),
-                                    self.use_dark_text,
                                     *source_artist,
+                                    self.track_actions_ctx(),
                                 )
                             } else {
                                 // Invalid album index, go back to grid
@@ -854,8 +867,8 @@ impl cosmic::Application for AppModel {
                                     album,
                                     &self.covers_cache,
                                     current_path.as_deref(),
-                                    self.use_dark_text,
                                     *source_artist,
+                                    self.track_actions_ctx(),
                                 )
                             } else {
                                 widget::text::body(fl!("album-not-found")).into()
@@ -880,8 +893,8 @@ impl cosmic::Application for AppModel {
                                     &self.playlist_tracks,
                                     &self.covers_cache,
                                     current_path,
-                                    self.use_dark_text,
                                     self.playlist_edit_mode,
+                                    self.track_actions_ctx(),
                                 )
                             } else {
                                 widget::text::body("Playlist não encontrada").into() // TODO: Use fl! macro
@@ -937,7 +950,7 @@ impl cosmic::Application for AppModel {
                 self.queue_position,
                 &self.covers_cache,
                 self.queue_edit_mode,
-                self.use_dark_text,
+                self.track_actions_ctx(),
             );
 
             // Queue sidebar on LEFT

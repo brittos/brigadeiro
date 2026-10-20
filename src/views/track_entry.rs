@@ -3,26 +3,29 @@
 // Track Entry Component - Single track row for album detail
 
 use crate::app::Message;
+use crate::model::track::Track;
+use crate::views::track_actions::{self, TrackActionsContext};
 use cosmic::Element;
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
 
 /// Renders a single track entry row
 ///
-/// Returns a clickable row with track number, title, and duration.
-/// Clicking plays the album starting from this track.
+/// Returns a clickable row with track number, title, duration and the
+/// per-track action buttons (favorite, add to playlist). `on_press` is emitted
+/// when the row itself is clicked; `trailing` is an optional extra control
+/// rendered after the actions (e.g. a remove button in edit mode).
 pub fn view(
-    album_idx: usize,
-    track_idx: usize,
+    track: &Track,
     track_number: u32,
-    title: String,
-    duration: f64,
     is_current: bool,
-    use_dark_text: bool,
+    on_press: Message,
+    trailing: Option<Element<'static, Message>>,
+    ctx: TrackActionsContext<'_>,
 ) -> Element<'static, Message> {
     // Format duration as mm:ss
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let secs = duration.max(0.0) as u64; // Safe: duration is always non-negative
+    let secs = track.duration.max(0.0) as u64; // Safe: duration is always non-negative
     let duration_str = format!("{}:{:02}", secs / 60, secs % 60);
 
     // Track number display
@@ -31,29 +34,37 @@ pub fn view(
         .width(Length::Fixed(30.0));
 
     // Title
-    let title_widget = widget::text::body(title).size(14).width(Length::Fill);
+    let title_widget = widget::text::body(track.title.clone())
+        .size(14)
+        .width(Length::Fill);
 
     // Duration
     let duration_widget = widget::text::body(duration_str)
         .size(14)
         .width(Length::Fixed(50.0));
 
+    let actions = track_actions::row_actions(track.id, track.favorite, ctx);
+
     // Create row content
-    let content = widget::row::with_capacity(3)
+    let mut content = widget::row::with_capacity(5)
         .push(number_widget)
         .push(title_widget)
         .push(duration_widget)
+        .push(actions)
         .spacing(12)
-        .padding([8, 16])
+        .padding([4, 16])
         .align_y(Alignment::Center);
+    if let Some(trailing) = trailing {
+        content = content.push(trailing);
+    }
 
     // Wrap in button for click handling
     let button = widget::button::custom(content)
-        .on_press(Message::PlayAlbumFromTrack(album_idx, track_idx))
+        .on_press(on_press)
         .width(Length::Fill);
 
     // Style based on current track
-    let button = button.class(track_entry_style(is_current, use_dark_text));
+    let button = button.class(track_entry_style(is_current, ctx.use_dark_text));
 
     button.into()
 }

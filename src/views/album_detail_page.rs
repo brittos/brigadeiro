@@ -4,6 +4,7 @@
 
 use crate::app::Message;
 use crate::views::albums_page::AlbumData;
+use crate::views::track_actions::TrackActionsContext;
 use crate::views::track_entry;
 use cosmic::Element;
 use cosmic::iced::{Alignment, Length};
@@ -27,9 +28,10 @@ pub fn view(
     album: &AlbumData,
     covers: &HashMap<i64, widget::image::Handle>,
     current_track_path: Option<&str>,
-    use_dark_text: bool,
     source_artist: Option<usize>,
+    ctx: TrackActionsContext<'_>,
 ) -> Element<'static, Message> {
+    let use_dark_text = ctx.use_dark_text;
     // Back button
     let back_button = widget::button::icon(widget::icon::from_name("go-previous-symbolic"))
         .on_press(Message::BackToAlbums(source_artist))
@@ -127,13 +129,12 @@ pub fn view(
             let track_num = track.track_number.unwrap_or((idx + 1) as u32); // Safe: small index
 
             track_entry::view(
-                album_idx,
-                idx,
+                track,
                 track_num,
-                track.title.clone(),
-                track.duration,
                 is_current,
-                use_dark_text,
+                Message::PlayAlbumFromTrack(album_idx, idx),
+                None,
+                ctx,
             )
         })
         .collect();

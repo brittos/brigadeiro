@@ -6,6 +6,7 @@
 use crate::app::Message;
 use crate::model::track::Track;
 use crate::player::queue::RepeatMode;
+use crate::views::track_actions;
 use cosmic::Element;
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
@@ -94,6 +95,7 @@ fn slider_style_logic(
 fn view_track_info<'a>(
     track: &'a Arc<Track>,
     covers: &'a HashMap<i64, widget::image::Handle>,
+    use_dark_text: bool,
 ) -> Element<'static, Message> {
     // Cover art
     let cover_widget: Element<Message> =
@@ -163,9 +165,13 @@ fn view_track_info<'a>(
         .spacing(2)
         .width(Length::FillPortion(1));
 
-    widget::row::with_capacity(2)
+    // Favorite heart next to the track info
+    let favorite_btn = track_actions::favorite_button(track.id, track.favorite, use_dark_text);
+
+    widget::row::with_capacity(3)
         .push(cover_widget)
         .push(info_column)
+        .push(favorite_btn)
         .spacing(12)
         .align_y(Alignment::Center)
         .width(Length::FillPortion(1))
@@ -375,7 +381,7 @@ pub fn view(
     let secondary = track.secondary_color;
 
     // Build the sections
-    let left_section = view_track_info(track, covers);
+    let left_section = view_track_info(track, covers, use_dark_text);
     let center_section = view_playback_controls(
         is_playing,
         current_position,

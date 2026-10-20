@@ -22,6 +22,19 @@ new-playlist = Nova Playlist
 delete-playlist = Deletar Playlist
 rename-playlist = Renomear Playlist
 playlist-stats = { $count } músicas • { $duration }
+playlist-not-found = Playlist não encontrada
+playlist-title-placeholder = Título da Playlist
+playlist-description-placeholder = Descrição
+no-playlists = Nenhuma playlist criada
+add-to-playlist = Adicionar à playlist
+remove-from-playlist = Remover da playlist
+btn-play = Reproduzir
+
+# Favoritos
+favorites = Favoritos
+btn-favorite = Adicionar aos favoritos
+btn-unfavorite = Remover dos favoritos
+favorites-empty = Nenhum favorito ainda. Toque no coração de uma música para adicioná-la aqui.
 
 # Window Controls
 window-minimize = Minimizar

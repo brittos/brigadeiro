@@ -5,6 +5,7 @@
 use crate::app::Message;
 use crate::model::playlist::Playlist;
 use crate::model::track::Track;
+use crate::views::track_actions::TrackActionsContext;
 use crate::views::track_entry;
 use cosmic::Element;
 use cosmic::iced::{Alignment, Length};
@@ -143,7 +144,7 @@ fn view_playlist_info<'a>(
 fn view_track_list<'a>(
     tracks: &'a [Track],
     current_track_path: Option<&'a str>,
-    use_dark_text: bool,
+    ctx: TrackActionsContext<'_>,
 ) -> Element<'a, Message> {
     let track_elements: Vec<Element<'static, Message>> = tracks
         .iter()
@@ -154,15 +155,13 @@ fn view_track_list<'a>(
             #[allow(clippy::cast_possible_truncation)]
             let track_number = (idx + 1) as u32; // Safe: idx is a small index
 
-            // Reusing track_entry but we might need a custom one for playlists to allow removal
             track_entry::view(
-                0, // Dummy index for now, we'll fix Message handling
-                idx,
+                track,
                 track_number,
-                track.title.clone(),
-                track.duration,
                 is_current,
-                use_dark_text,
+                Message::PlayAlbumFromTrack(0, idx),
+                None,
+                ctx,
             )
         })
         .collect();
@@ -179,9 +178,10 @@ pub fn view<'a>(
     tracks: &'a [Track],
     covers: &'a HashMap<i64, widget::image::Handle>,
     current_track_path: Option<&'a str>,
-    use_dark_text: bool,
     edit_mode: bool,
+    ctx: TrackActionsContext<'_>,
 ) -> Element<'a, Message> {
+    let use_dark_text = ctx.use_dark_text;
     let header = view_playlist_header(playlist, edit_mode);
     let cover_widget = view_playlist_cover(tracks, covers);
 
@@ -197,7 +197,7 @@ pub fn view<'a>(
         use_dark_text,
         edit_mode,
     );
-    let tracks_list = view_track_list(tracks, current_track_path, use_dark_text);
+    let tracks_list = view_track_list(tracks, current_track_path, ctx);
 
     // Playlist header: cover + info side by side
     let playlist_header = widget::row::with_capacity(2)
