@@ -278,6 +278,9 @@ pub enum Message {
     RemoveTrackFromPlaylist(i64, i64),
     PlaylistsScrolled(cosmic::iced::widget::scrollable::Viewport),
     PlaylistTracksLoaded(Vec<crate::model::track::Track>),
+    // Favorites
+    /// Toggle the favorite flag of a track (by track id)
+    ToggleFavorite(i64),
     /// MPRIS D-Bus action received from external controller
     MprisCommand(MprisAction),
     NoOp,
@@ -362,6 +365,75 @@ impl AppModel {
         let mut artists: Vec<ArtistData> = artists_map.into_values().collect();
         artists.sort_by(|a, b| a.name.cmp(&b.name));
         artists
+    }
+
+    /// Flip the favorite flag of a track everywhere it is cached in memory,
+    /// then persist the new value in the background.
+    fn toggle_favorite(&mut self, track_id: i64) -> Task<cosmic::Action<Message>> {
+        // The library is the source of truth; fall back to other caches for
+        // tracks that are playing but not (yet) in the library.
+        let current = self
+            .library_tracks
+            .iter()
+            .find(|t| t.id == track_id)
+            .map(|t| t.favorite)
+            .or_else(|| {
+                self.player_state
+                    .current_track
+                    .as_ref()
+                    .filter(|t| t.id == track_id)
+                    .map(|t| t.favorite)
+            })
+            .or_else(|| {
+                self.queue_tracks
+                    .iter()
+                    .find(|t| t.id == track_id)
+                    .map(|t| t.favorite)
+            });
+        let Some(current) = current else {
+            return Task::none();
+        };
+        let favorite = !current;
+
+        let set = |t: &mut Track| {
+            if t.id == track_id {
+                t.favorite = favorite;
+            }
+        };
+        self.library_tracks.iter_mut().for_each(set);
+        self.library_albums
+            .iter_mut()
+            .flat_map(|a| a.tracks.iter_mut())
+            .for_each(set);
+        self.library_artists
+            .iter_mut()
+            .flat_map(|a| a.tracks.iter_mut())
+            .for_each(set);
+        self.playlist_tracks.iter_mut().for_each(set);
+        for track in &mut self.queue_tracks {
+            if track.id == track_id {
+                Arc::make_mut(track).favorite = favorite;
+            }
+        }
+        if let Some(track) = self.player_state.current_track.as_mut()
+            && track.id == track_id
+        {
+            Arc::make_mut(track).favorite = favorite;
+        }
+
+        let db = self.database.clone();
+        Task::perform(
+            async move {
+                if let Some(db) = db {
+                    let _ = tokio::task::spawn_blocking(move || {
+                        db.set_track_favorite(track_id, favorite)
+                    })
+                    .await;
+                }
+            },
+            |()| Message::NoOp,
+        )
+        .map(cosmic::Action::App)
     }
 
     /// Update player state metadata based on current queue
@@ -1091,6 +1163,9 @@ impl cosmic::Application for AppModel {
             | Message::OpenFolderPicker
             | Message::FileSelected(_)
             | Message::FolderSelected(_) => self.update_file_ops(message),
+
+            // --- Favorites ---
+            Message::ToggleFavorite(track_id) => self.toggle_favorite(track_id),
 
             // --- MPRIS D-Bus commands ---
             Message::MprisCommand(ref action) => self.update_mpris(action),
