@@ -95,7 +95,6 @@ fn slider_style_logic(
 fn view_track_info<'a>(
     track: &'a Arc<Track>,
     covers: &'a HashMap<i64, widget::image::Handle>,
-    use_dark_text: bool,
 ) -> Element<'static, Message> {
     // Cover art
     let cover_widget: Element<Message> =
@@ -166,7 +165,7 @@ fn view_track_info<'a>(
         .width(Length::FillPortion(1));
 
     // Favorite heart next to the track info
-    let favorite_btn = track_actions::favorite_button(track.id, track.favorite, use_dark_text);
+    let favorite_btn = track_actions::favorite_button(track.id, track.favorite);
 
     widget::row::with_capacity(3)
         .push(cover_widget)
@@ -381,7 +380,7 @@ pub fn view(
     let secondary = track.secondary_color;
 
     // Build the sections
-    let left_section = view_track_info(track, covers, use_dark_text);
+    let left_section = view_track_info(track, covers);
     let center_section = view_playback_controls(
         is_playing,
         current_position,

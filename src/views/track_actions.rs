@@ -6,9 +6,9 @@
 use crate::app::Message;
 use crate::fl;
 use crate::model::playlist::Playlist;
-use cosmic::Element;
-use cosmic::iced::{Alignment, Length};
+use cosmic::iced::{Alignment, Background, Color, Length};
 use cosmic::widget;
+use cosmic::Element;
 
 const MENU_WIDTH: f32 = 240.0;
 const MENU_MAX_HEIGHT: f32 = 320.0;
@@ -31,7 +31,7 @@ pub fn row_actions(
     ctx: TrackActionsContext<'_>,
 ) -> Element<'static, Message> {
     widget::row::with_capacity(2)
-        .push(favorite_button(track_id, favorite, ctx.use_dark_text))
+        .push(favorite_button(track_id, favorite))
         .push(add_to_playlist_button(track_id, ctx))
         .spacing(2)
         .align_y(Alignment::Center)
@@ -111,17 +111,41 @@ fn add_to_playlist_menu(track_id: i64, playlists: &[Playlist]) -> Element<'stati
         .into()
 }
 
+/// Fill color of the heart when the track is a favorite (#E73863).
+const FAVORITE_COLOR: Color = Color::from_rgb(231.0 / 255.0, 56.0 / 255.0, 99.0 / 255.0);
+
+/// Transparent button whose icon is painted with [`FAVORITE_COLOR`];
+/// hover and press states only add a faint tint of the same color.
+fn favorite_button_style() -> cosmic::theme::Button {
+    fn style(background_alpha: f32) -> widget::button::Style {
+        let background = (background_alpha > 0.0).then_some(Background::Color(Color {
+            a: background_alpha,
+            ..FAVORITE_COLOR
+        }));
+        widget::button::Style {
+            background,
+            icon_color: Some(FAVORITE_COLOR),
+            text_color: Some(FAVORITE_COLOR),
+            border_radius: 8.0.into(),
+            ..Default::default()
+        }
+    }
+
+    cosmic::theme::Button::Custom {
+        active: Box::new(|_focused, _theme| style(0.0)),
+        disabled: Box::new(|_theme| style(0.0)),
+        hovered: Box::new(|_focused, _theme| style(0.15)),
+        pressed: Box::new(|_focused, _theme| style(0.25)),
+    }
+}
+
 /// Heart button that toggles the favorite flag of a track.
 ///
-/// Highlighted with the accent color when the track is a favorite,
+/// Painted with [`FAVORITE_COLOR`] when the track is a favorite,
 /// rendered as a plain text button otherwise.
-pub fn favorite_button(
-    track_id: i64,
-    favorite: bool,
-    use_dark_text: bool,
-) -> Element<'static, Message> {
+pub fn favorite_button(track_id: i64, favorite: bool) -> Element<'static, Message> {
     let class = if favorite {
-        crate::views::suggested_button_style(use_dark_text)
+        favorite_button_style()
     } else {
         cosmic::theme::Button::Text
     };
