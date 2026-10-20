@@ -47,6 +47,12 @@ window-rescan = Rescan Library
 empty-folder-list = No folders configured. Add a folder to start.
 album-not-found = Album not found
 artist-not-found = Artist not found
+no-tracks = No songs found
+
+# Queue
+queue-title = Playback Queue
+queue-empty = Queue is empty
+queue-empty-hint = Add songs to get started
 
 # Settings - Main
 settings-title = Settings

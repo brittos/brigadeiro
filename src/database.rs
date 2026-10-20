@@ -332,7 +332,8 @@ impl Database {
     }
 
     /// Columns shared by every query that materializes a [`Track`](crate::model::track::Track).
-    const TRACK_COLUMNS: &'static str = "t.id, t.title, t.album_artist, t.album_name, t.date, t.duration,
+    const TRACK_COLUMNS: &'static str =
+        "t.id, t.title, t.album_artist, t.album_name, t.date, t.duration,
                     t.track_number, t.disc_number, f.uri, t.filetype,
                     t.accent_color, t.secondary_color, t.tertiary_color, t.cover_art_id,
                     t.favorite";

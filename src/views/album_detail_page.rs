@@ -96,7 +96,8 @@ pub fn view(
     ));
 
     // Play buttons
-    let play_all_btn = widget::button::suggested("▶ Reproduzir") // TODO: Use fl! macro
+    let play_all_btn = widget::button::suggested(fl!("btn-play"))
+        .leading_icon(widget::icon::from_name("media-playback-start-symbolic"))
         .on_press(Message::PlayAlbumFromTrack(album_idx, 0))
         .class(crate::views::suggested_button_style(use_dark_text));
 

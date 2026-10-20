@@ -71,9 +71,8 @@ fn add_to_playlist_menu(track_id: i64, playlists: &[Playlist]) -> Element<'stati
     let mut items = widget::column::with_capacity(playlists.len().max(1)).width(Length::Fill);
 
     if playlists.is_empty() {
-        items = items.push(
-            widget::container(widget::text::caption(fl!("no-playlists"))).padding([4, 8]),
-        );
+        items = items
+            .push(widget::container(widget::text::caption(fl!("no-playlists"))).padding([4, 8]));
     } else {
         for playlist in playlists {
             items = items.push(
@@ -96,7 +95,10 @@ fn add_to_playlist_menu(track_id: i64, playlists: &[Playlist]) -> Element<'stati
         .width(Length::Fill);
 
     let content = widget::column::with_capacity(4)
-        .push(widget::container(widget::text::caption_heading(fl!("add-to-playlist"))).padding([4, 8]))
+        .push(
+            widget::container(widget::text::caption_heading(fl!("add-to-playlist")))
+                .padding([4, 8]),
+        )
         .push(list)
         .push(widget::divider::horizontal::default())
         .push(new_playlist)

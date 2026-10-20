@@ -32,7 +32,7 @@ pub fn view<'a>(
     let use_dark_text = ctx.use_dark_text;
     if tracks.is_empty() {
         return widget::container(
-            widget::text::title3("Nenhuma música encontrada")
+            widget::text::title3(fl!("no-tracks"))
                 .width(Length::Fill)
                 .align_x(cosmic::iced::alignment::Horizontal::Center),
         )

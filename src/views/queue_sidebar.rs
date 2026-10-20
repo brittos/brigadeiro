@@ -4,6 +4,7 @@
 // Features: Edit mode, Clear, Toggle visibility
 
 use crate::app::Message;
+use crate::fl;
 use crate::model::track::Track;
 use crate::views::track_actions::{self, TrackActionsContext};
 use cosmic::Element;
@@ -66,9 +67,9 @@ fn format_remaining_time(seconds: f64) -> String {
     if total_minutes >= 60 {
         let hours = total_minutes / 60;
         let mins = total_minutes % 60;
-        format!("{hours}h {mins}min restantes")
+        fl!("queue-remaining-hours", hours = hours, minutes = mins)
     } else {
-        format!("{total_minutes} min restantes")
+        fl!("queue-remaining-minutes", minutes = total_minutes)
     }
 }
 
@@ -77,8 +78,8 @@ fn view_sidebar_header(
     remaining_time: f64,
     edit_mode: bool,
 ) -> Element<'static, Message> {
-    let title = widget::text::title4("Fila de Reprodução"); // TODO: Use fl! macro
-    let count_badge = widget::text::caption(format!("{track_count} faixas")).size(11); // TODO: Use fl! macro
+    let title = widget::text::title4(fl!("queue-title"));
+    let count_badge = widget::text::caption(fl!("track-count", count = track_count)).size(11);
     let time_label = widget::text::caption(format_remaining_time(remaining_time)).size(11);
 
     let clear_button = widget::button::icon(widget::icon::from_name("edit-clear-all-symbolic"))
@@ -137,22 +138,15 @@ fn view_sidebar_track_list<'a>(
         .map(|(idx, track)| {
             let is_current = idx == queue_position;
             let cover = track.cover_art_id.and_then(|id| covers.get(&id)).cloned();
-            queue_track_row(
-                idx,
-                track.as_ref(),
-                cover,
-                is_current,
-                edit_mode,
-                ctx,
-            )
+            queue_track_row(idx, track.as_ref(), cover, is_current, edit_mode, ctx)
         })
         .collect();
 
     if track_rows.is_empty() {
         widget::container(
             widget::column::with_capacity(2)
-                .push(widget::text::body("Fila vazia").size(16)) // TODO: Use fl! macro
-                .push(widget::text::caption("Adicione músicas para começar").size(12)) // TODO: Use fl! macro
+                .push(widget::text::body(fl!("queue-empty")).size(16))
+                .push(widget::text::caption(fl!("queue-empty-hint")).size(12))
                 .spacing(8)
                 .align_x(cosmic::iced::alignment::Horizontal::Center),
         )
@@ -202,13 +196,7 @@ pub fn view(
         .sum();
 
     let header = view_sidebar_header(track_count, remaining_time, edit_mode);
-    let tracks_list = view_sidebar_track_list(
-        queue_tracks,
-        queue_position,
-        covers,
-        edit_mode,
-        ctx,
-    );
+    let tracks_list = view_sidebar_track_list(queue_tracks, queue_position, covers, edit_mode, ctx);
 
     // Sidebar container
     let content = widget::column::with_capacity(2)

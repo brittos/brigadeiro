@@ -111,9 +111,9 @@ fn view_playlist_info<'a>(
             fl!("playlist-description-placeholder"),
             playlist.description.as_deref().unwrap_or(""),
         )
-            .on_input(|desc| Message::UpdatePlaylistDescription(playlist.id, desc))
-            .width(Length::Fill)
-            .into()
+        .on_input(|desc| Message::UpdatePlaylistDescription(playlist.id, desc))
+        .width(Length::Fill)
+        .into()
     } else {
         widget::text::body(playlist.description.clone().unwrap_or_default()).into()
     };

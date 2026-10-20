@@ -397,6 +397,27 @@ impl AppModel {
         artists
     }
 
+    /// Show the Favorites collection and load its tracks from the database.
+    fn open_favorites(&mut self) -> Task<cosmic::Action<Message>> {
+        self.current_view = AppView::Favorites;
+        self.playlist_edit_mode = false;
+        self.add_to_playlist_menu = None;
+        let db = self.database.clone();
+        Task::perform(
+            async move {
+                if let Some(db) = db {
+                    tokio::task::spawn_blocking(move || db.get_favorite_tracks().unwrap_or_default())
+                        .await
+                        .unwrap_or_default()
+                } else {
+                    Vec::new()
+                }
+            },
+            Message::PlaylistTracksLoaded,
+        )
+        .map(cosmic::Action::App)
+    }
+
     /// Flip the favorite flag of a track everywhere it is cached in memory,
     /// then persist the new value in the background.
     fn toggle_favorite(&mut self, track_id: i64) -> Task<cosmic::Action<Message>> {
@@ -448,8 +469,7 @@ impl AppModel {
                     && let Some(track) = self.library_tracks.iter().find(|t| t.id == track_id)
                 {
                     self.playlist_tracks.push(track.clone());
-                    self.playlist_tracks
-                        .sort_by_key(|t| t.title.to_lowercase());
+                    self.playlist_tracks.sort_by_key(|t| t.title.to_lowercase());
                 }
             } else {
                 self.playlist_tracks.retain(|t| t.id != track_id);
@@ -1232,27 +1252,7 @@ impl cosmic::Application for AppModel {
 
             // --- Favorites ---
             Message::ToggleFavorite(track_id) => self.toggle_favorite(track_id),
-            Message::OpenFavorites => {
-                self.current_view = AppView::Favorites;
-                self.playlist_edit_mode = false;
-                self.add_to_playlist_menu = None;
-                let db = self.database.clone();
-                Task::perform(
-                    async move {
-                        if let Some(db) = db {
-                            tokio::task::spawn_blocking(move || {
-                                db.get_favorite_tracks().unwrap_or_default()
-                            })
-                            .await
-                            .unwrap_or_default()
-                        } else {
-                            Vec::new()
-                        }
-                    },
-                    Message::PlaylistTracksLoaded,
-                )
-                .map(cosmic::Action::App)
-            }
+            Message::OpenFavorites => self.open_favorites(),
 
             // --- MPRIS D-Bus commands ---
             Message::MprisCommand(ref action) => self.update_mpris(action),
@@ -2500,7 +2500,7 @@ impl AppModel {
                 let title = fl!("new-playlist");
                 return Task::perform(
                     async move {
-                        let Some(db) = db else { return None };
+                        let db = db?;
                         tokio::task::spawn_blocking(move || {
                             let playlist_id = db.create_playlist(title, None).ok()?;
                             let _ = db.add_track_to_playlist(playlist_id, track_id);

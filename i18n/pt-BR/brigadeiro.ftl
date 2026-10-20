@@ -47,6 +47,12 @@ window-rescan = Re-escanear Biblioteca
 empty-folder-list = Nenhuma pasta configurada. Adicione uma pasta para começar.
 album-not-found = Álbum não encontrado
 artist-not-found = Artista não encontrado
+no-tracks = Nenhuma música encontrada
+
+# Fila
+queue-title = Fila de Reprodução
+queue-empty = Fila vazia
+queue-empty-hint = Adicione músicas para começar
 
 # Settings - Main
 settings-title = Configurações
