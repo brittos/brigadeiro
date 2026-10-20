@@ -6,6 +6,7 @@
 use crate::app::Message;
 use crate::model::track::Track;
 use crate::player::queue::RepeatMode;
+use crate::views::track_actions;
 use cosmic::Element;
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
@@ -163,9 +164,13 @@ fn view_track_info<'a>(
         .spacing(2)
         .width(Length::FillPortion(1));
 
-    widget::row::with_capacity(2)
+    // Favorite heart next to the track info
+    let favorite_btn = track_actions::favorite_button(track.id, track.favorite);
+
+    widget::row::with_capacity(3)
         .push(cover_widget)
         .push(info_column)
+        .push(favorite_btn)
         .spacing(12)
         .align_y(Alignment::Center)
         .width(Length::FillPortion(1))

@@ -22,6 +22,19 @@ new-playlist = New Playlist
 delete-playlist = Delete Playlist
 rename-playlist = Rename Playlist
 playlist-stats = { $count } songs • { $duration }
+playlist-not-found = Playlist not found
+playlist-title-placeholder = Playlist title
+playlist-description-placeholder = Description
+no-playlists = No playlists yet
+add-to-playlist = Add to playlist
+remove-from-playlist = Remove from playlist
+btn-play = Play
+
+# Favorites
+favorites = Favorites
+btn-favorite = Add to favorites
+btn-unfavorite = Remove from favorites
+favorites-empty = No favorites yet. Tap the heart on a song to add it here.
 
 # Window Controls
 window-minimize = Minimize
@@ -34,6 +47,12 @@ window-rescan = Rescan Library
 empty-folder-list = No folders configured. Add a folder to start.
 album-not-found = Album not found
 artist-not-found = Artist not found
+no-tracks = No songs found
+
+# Queue
+queue-title = Playback Queue
+queue-empty = Queue is empty
+queue-empty-hint = Add songs to get started
 
 # Settings - Main
 settings-title = Settings

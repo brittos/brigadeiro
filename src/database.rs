@@ -323,8 +323,59 @@ impl Database {
         let _ = conn.execute("ALTER TABLE Tracks ADD COLUMN accent_color TEXT", []);
         let _ = conn.execute("ALTER TABLE Tracks ADD COLUMN secondary_color TEXT", []);
         let _ = conn.execute("ALTER TABLE Tracks ADD COLUMN tertiary_color TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE Tracks ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
 
         Ok(())
+    }
+
+    /// Columns shared by every query that materializes a [`Track`](crate::model::track::Track).
+    const TRACK_COLUMNS: &'static str =
+        "t.id, t.title, t.album_artist, t.album_name, t.date, t.duration,
+                    t.track_number, t.disc_number, f.uri, t.filetype,
+                    t.accent_color, t.secondary_color, t.tertiary_color, t.cover_art_id,
+                    t.favorite";
+
+    /// Build a [`Track`](crate::model::track::Track) from a row selected with [`Self::TRACK_COLUMNS`].
+    fn track_from_row(row: &rusqlite::Row<'_>) -> Result<crate::model::track::Track> {
+        let accent_hex: Option<String> = row.get(10)?;
+        let secondary_hex: Option<String> = row.get(11)?;
+        let tertiary_hex: Option<String> = row.get(12)?;
+
+        let parse_color = |hex: Option<String>| -> Option<Color> {
+            hex.and_then(|h| {
+                if h.starts_with('#') && h.len() == 7 {
+                    let r = u8::from_str_radix(&h[1..3], 16).ok()?;
+                    let g = u8::from_str_radix(&h[3..5], 16).ok()?;
+                    let b = u8::from_str_radix(&h[5..7], 16).ok()?;
+                    Some(Color::from_rgb8(r, g, b))
+                } else {
+                    None
+                }
+            })
+        };
+
+        Ok(crate::model::track::Track {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            artist: row.get(2)?,
+            album_artist: row.get(2)?,
+            album: row.get(3)?,
+            date: Some(row.get(4)?),
+            duration: row.get(5)?,
+            track_number: Some(row.get(6)?),
+            disc_number: Some(row.get(7)?),
+            uri: PathBuf::from(row.get::<_, String>(8)?),
+            file_type: row.get(9)?,
+            accent_color: parse_color(accent_hex),
+            secondary_color: parse_color(secondary_hex),
+            tertiary_color: parse_color(tertiary_hex),
+            cover_art_id: row.get(13)?,
+            favorite: row.get::<_, i64>(14)? != 0,
+            ..Default::default()
+        })
     }
 
     /// Save full track metadata to the database
@@ -519,51 +570,14 @@ impl Database {
     /// Get all tracks from the database
     pub fn get_all_tracks(&self) -> Result<Vec<crate::model::track::Track>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT t.id, t.title, t.album_artist, t.album_name, t.date, t.duration, 
-                    t.track_number, t.disc_number, f.uri, t.filetype,
-                    t.accent_color, t.secondary_color, t.tertiary_color, t.cover_art_id
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {}
              FROM Tracks t
              JOIN File_URIs f ON t.file_uri_id = f.id",
-        )?;
+            Self::TRACK_COLUMNS
+        ))?;
 
-        let track_iter = stmt.query_map([], |row| {
-            let accent_hex: Option<String> = row.get(10)?;
-            let secondary_hex: Option<String> = row.get(11)?;
-            let tertiary_hex: Option<String> = row.get(12)?;
-
-            let parse_color = |hex: Option<String>| -> Option<Color> {
-                hex.and_then(|h| {
-                    if h.starts_with('#') && h.len() == 7 {
-                        let r = u8::from_str_radix(&h[1..3], 16).ok()?;
-                        let g = u8::from_str_radix(&h[3..5], 16).ok()?;
-                        let b = u8::from_str_radix(&h[5..7], 16).ok()?;
-                        Some(Color::from_rgb8(r, g, b))
-                    } else {
-                        None
-                    }
-                })
-            };
-
-            Ok(crate::model::track::Track {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                artist: row.get(2)?,
-                album_artist: row.get(2)?,
-                album: row.get(3)?,
-                date: Some(row.get(4)?),
-                duration: row.get(5)?,
-                track_number: Some(row.get(6)?),
-                disc_number: Some(row.get(7)?),
-                uri: PathBuf::from(row.get::<_, String>(8)?),
-                file_type: row.get(9)?,
-                accent_color: parse_color(accent_hex),
-                secondary_color: parse_color(secondary_hex),
-                tertiary_color: parse_color(tertiary_hex),
-                cover_art_id: row.get(13)?,
-                ..Default::default()
-            })
-        })?;
+        let track_iter = stmt.query_map([], Self::track_from_row)?;
 
         let mut tracks = Vec::new();
         for track in track_iter {
@@ -571,6 +585,38 @@ impl Database {
         }
 
         Ok(tracks)
+    }
+
+    /// Get all tracks marked as favorite, ordered by title
+    pub fn get_favorite_tracks(&self) -> Result<Vec<crate::model::track::Track>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {}
+             FROM Tracks t
+             JOIN File_URIs f ON t.file_uri_id = f.id
+             WHERE t.favorite <> 0
+             ORDER BY t.title COLLATE NOCASE ASC",
+            Self::TRACK_COLUMNS
+        ))?;
+
+        let track_iter = stmt.query_map([], Self::track_from_row)?;
+
+        let mut tracks = Vec::new();
+        for track in track_iter {
+            tracks.push(track?);
+        }
+
+        Ok(tracks)
+    }
+
+    /// Mark or unmark a track as favorite
+    pub fn set_track_favorite(&self, track_id: i64, favorite: bool) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE Tracks SET favorite = ? WHERE id = ?",
+            params![i64::from(favorite), track_id],
+        )?;
+        Ok(())
     }
 
     /// Update visual metadata for a track
@@ -713,7 +759,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT id, title, description, creation_time, modify_time FROM Playlists ORDER BY title ASC")?;
 
-        let playlists = stmt
+        let mut playlists: Vec<crate::model::playlist::Playlist> = stmt
             .query_map([], |row| {
                 Ok(crate::model::playlist::Playlist {
                     id: row.get(0)?,
@@ -721,11 +767,26 @@ impl Database {
                     description: Some(row.get(2)?),
                     created_at: row.get(3)?,
                     modified_at: row.get(4)?,
-                    track_ids: Vec::new(), // Populated separately if needed, or lazy-loaded
+                    track_ids: Vec::new(),
                 })
             })?
             .filter_map(Result::ok)
             .collect();
+
+        let mut ids_stmt = conn.prepare(
+            "SELECT petj.track_id
+             FROM Playlist_Entries pe
+             JOIN Playlist_Entry_Playlist_Junction pepj ON pe.id = pepj.playlist_entry_id
+             JOIN Playlist_Entry_Track_Junction petj ON pe.id = petj.playlist_entry_id
+             WHERE pepj.playlist_id = ?
+             ORDER BY pe.playlist_position ASC",
+        )?;
+        for playlist in &mut playlists {
+            playlist.track_ids = ids_stmt
+                .query_map([playlist.id], |row| row.get(0))?
+                .filter_map(Result::ok)
+                .collect();
+        }
 
         Ok(playlists)
     }
@@ -736,7 +797,8 @@ impl Database {
         let tx = conn.unchecked_transaction()?;
 
         // 1. Determine new position (append at end)
-        // We need to join everything to find the max position for this playlist
+        // We need to join everything to find the max position for this playlist.
+        // MAX() over an empty set yields a single NULL row, hence Option<i64>.
         let max_pos: Option<i64> = tx
             .query_row(
                 "SELECT MAX(pe.playlist_position) 
@@ -744,9 +806,10 @@ impl Database {
              JOIN Playlist_Entry_Playlist_Junction pepj ON pe.id = pepj.playlist_entry_id
              WHERE pepj.playlist_id = ?",
                 [playlist_id],
-                |row| row.get(0),
+                |row| row.get::<_, Option<i64>>(0),
             )
-            .optional()?;
+            .optional()?
+            .flatten();
 
         let next_pos = max_pos.unwrap_or(0) + 1;
 
@@ -835,10 +898,8 @@ impl Database {
     /// Get all tracks for a playlist in order
     pub fn get_playlist_tracks(&self, playlist_id: i64) -> Result<Vec<crate::model::track::Track>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT t.id, t.title, t.album_artist, t.album_name, t.date, t.duration, 
-                    t.track_number, t.disc_number, f.uri, t.filetype,
-                    t.accent_color, t.secondary_color, t.tertiary_color, t.cover_art_id
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {}
              FROM Tracks t
              JOIN File_URIs f ON t.file_uri_id = f.id
              JOIN Playlist_Entry_Track_Junction petj ON t.id = petj.track_id
@@ -846,45 +907,10 @@ impl Database {
              JOIN Playlist_Entry_Playlist_Junction pepj ON pe.id = pepj.playlist_entry_id
              WHERE pepj.playlist_id = ?
              ORDER BY pe.playlist_position ASC",
-        )?;
+            Self::TRACK_COLUMNS
+        ))?;
 
-        let track_iter = stmt.query_map([playlist_id], |row| {
-            let accent_hex: Option<String> = row.get(10)?;
-            let secondary_hex: Option<String> = row.get(11)?;
-            let tertiary_hex: Option<String> = row.get(12)?;
-
-            let parse_color = |hex: Option<String>| -> Option<Color> {
-                hex.and_then(|h| {
-                    if h.starts_with('#') && h.len() == 7 {
-                        let r = u8::from_str_radix(&h[1..3], 16).ok()?;
-                        let g = u8::from_str_radix(&h[3..5], 16).ok()?;
-                        let b = u8::from_str_radix(&h[5..7], 16).ok()?;
-                        Some(Color::from_rgb8(r, g, b))
-                    } else {
-                        None
-                    }
-                })
-            };
-
-            Ok(crate::model::track::Track {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                artist: row.get(2)?,
-                album_artist: row.get(2)?,
-                album: row.get(3)?,
-                date: Some(row.get(4)?),
-                duration: row.get(5)?,
-                track_number: Some(row.get(6)?),
-                disc_number: Some(row.get(7)?),
-                uri: PathBuf::from(row.get::<_, String>(8)?),
-                file_type: row.get(9)?,
-                accent_color: parse_color(accent_hex),
-                secondary_color: parse_color(secondary_hex),
-                tertiary_color: parse_color(tertiary_hex),
-                cover_art_id: row.get(13)?,
-                ..Default::default()
-            })
-        })?;
+        let track_iter = stmt.query_map([playlist_id], Self::track_from_row)?;
 
         let mut tracks = Vec::new();
         for track in track_iter {
@@ -913,5 +939,152 @@ impl Database {
             .collect();
 
         Ok(ids)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Database;
+    use crate::utils::metadata::AudioMetadata;
+    use std::path::PathBuf;
+
+    fn insert_track(db: &Database, title: &str) -> i64 {
+        let metadata = AudioMetadata {
+            title: Some(title.to_string()),
+            artist: Some("Artist".to_string()),
+            album: Some("Album".to_string()),
+            duration: 120.0,
+            file_type: "mp3".to_string(),
+            ..Default::default()
+        };
+        let path = PathBuf::from(format!("/music/{title}.mp3"));
+        db.save_track_metadata(&path, &metadata)
+            .expect("track should be saved")
+    }
+
+    #[test]
+    fn tracks_are_not_favorite_by_default() {
+        let db = Database::open_in_memory().unwrap();
+        insert_track(&db, "a");
+
+        let tracks = db.get_all_tracks().unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert!(!tracks[0].favorite);
+        assert!(db.get_favorite_tracks().unwrap().is_empty());
+    }
+
+    #[test]
+    fn set_track_favorite_round_trips() {
+        let db = Database::open_in_memory().unwrap();
+        let a = insert_track(&db, "a");
+        let b = insert_track(&db, "b");
+
+        db.set_track_favorite(a, true).unwrap();
+
+        let favorites = db.get_favorite_tracks().unwrap();
+        assert_eq!(favorites.iter().map(|t| t.id).collect::<Vec<_>>(), vec![a]);
+        assert!(favorites[0].favorite);
+
+        // The flag is also visible through the regular library query
+        let all = db.get_all_tracks().unwrap();
+        assert!(all.iter().find(|t| t.id == a).unwrap().favorite);
+        assert!(!all.iter().find(|t| t.id == b).unwrap().favorite);
+
+        db.set_track_favorite(a, false).unwrap();
+        assert!(db.get_favorite_tracks().unwrap().is_empty());
+    }
+
+    #[test]
+    fn favorite_tracks_are_sorted_by_title() {
+        let db = Database::open_in_memory().unwrap();
+        let zeta = insert_track(&db, "Zeta");
+        let alpha = insert_track(&db, "alpha");
+        db.set_track_favorite(zeta, true).unwrap();
+        db.set_track_favorite(alpha, true).unwrap();
+
+        let ids: Vec<i64> = db
+            .get_favorite_tracks()
+            .unwrap()
+            .iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(ids, vec![alpha, zeta]);
+    }
+
+    #[test]
+    fn add_and_remove_tracks_from_playlist_updates_count_and_order() {
+        let db = Database::open_in_memory().unwrap();
+        let a = insert_track(&db, "a");
+        let b = insert_track(&db, "b");
+        let c = insert_track(&db, "c");
+        let playlist = db.create_playlist("Mix".to_string(), None).unwrap();
+
+        // Empty playlist reports zero tracks
+        let playlists = db.get_all_playlists().unwrap();
+        assert_eq!(playlists.len(), 1);
+        assert_eq!(playlists[0].track_count(), 0);
+
+        db.add_track_to_playlist(playlist, a).unwrap();
+        db.add_track_to_playlist(playlist, b).unwrap();
+        db.add_track_to_playlist(playlist, c).unwrap();
+
+        let playlists = db.get_all_playlists().unwrap();
+        assert_eq!(playlists[0].track_count(), 3);
+        assert_eq!(playlists[0].track_ids, vec![a, b, c]);
+
+        let ids: Vec<i64> = db
+            .get_playlist_tracks(playlist)
+            .unwrap()
+            .iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(ids, vec![a, b, c]);
+
+        // Remove the middle entry (positions are 1-based) and check reordering
+        db.remove_track_from_playlist(playlist, 2).unwrap();
+
+        let ids: Vec<i64> = db
+            .get_playlist_tracks(playlist)
+            .unwrap()
+            .iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(ids, vec![a, c]);
+        assert_eq!(db.get_all_playlists().unwrap()[0].track_count(), 2);
+
+        // Removing position 2 again now removes `c`, proving positions were compacted
+        db.remove_track_from_playlist(playlist, 2).unwrap();
+        let ids: Vec<i64> = db
+            .get_playlist_tracks(playlist)
+            .unwrap()
+            .iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(ids, vec![a]);
+    }
+
+    #[test]
+    fn same_track_can_appear_twice_in_a_playlist() {
+        let db = Database::open_in_memory().unwrap();
+        let a = insert_track(&db, "a");
+        let playlist = db.create_playlist("Mix".to_string(), None).unwrap();
+
+        db.add_track_to_playlist(playlist, a).unwrap();
+        db.add_track_to_playlist(playlist, a).unwrap();
+
+        assert_eq!(db.get_all_playlists().unwrap()[0].track_count(), 2);
+    }
+
+    #[test]
+    fn playlist_tracks_carry_the_favorite_flag() {
+        let db = Database::open_in_memory().unwrap();
+        let a = insert_track(&db, "a");
+        let playlist = db.create_playlist("Mix".to_string(), None).unwrap();
+        db.add_track_to_playlist(playlist, a).unwrap();
+        db.set_track_favorite(a, true).unwrap();
+
+        let tracks = db.get_playlist_tracks(playlist).unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert!(tracks[0].favorite);
     }
 }

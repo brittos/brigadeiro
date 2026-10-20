@@ -17,6 +17,7 @@ use crate::views::artists_page::{self, ArtistData};
 use crate::views::control_bar;
 use crate::views::queue_sidebar;
 use crate::views::settings_dialog::{self, SettingsMessage, SettingsPage};
+use crate::views::track_actions::TrackActionsContext;
 use crate::views::tracks_page;
 use cosmic::cosmic_config::{self, CosmicConfigEntry};
 use cosmic::iced::alignment::{Horizontal, Vertical};
@@ -53,6 +54,8 @@ pub enum AppView {
     ArtistDetail(usize), // index into library_artists
     /// Playlist detail page with tracks
     PlaylistDetail(i64), // playlist ID
+    /// Built-in "Favorites" collection, rendered with the playlist detail page
+    Favorites,
 }
 
 /// Calculate perceived luminance of a color (0.0 = black, 1.0 = white)
@@ -154,6 +157,10 @@ pub struct AppModel {
     playlist_tracks: Vec<crate::model::track::Track>,
     /// Playlists scroll Y
     playlists_scroll_y: f32,
+    /// Track id whose "Add to playlist" menu is open, if any
+    add_to_playlist_menu: Option<i64>,
+    /// Synthetic playlist used to render the Favorites collection
+    favorites_playlist: crate::model::playlist::Playlist,
 
     // Default cover art assets for fallback
     /// Default background image handle
@@ -274,16 +281,42 @@ pub enum Message {
     TogglePlaylistEditMode(bool),
     OpenPlaylistDetail(i64),
     PlayPlaylist(i64),
+    /// Play the playlist being viewed starting at a track index
+    PlayPlaylistFromTrack(i64, usize), // playlist_id, track_idx
     AddTrackToPlaylist(i64, i64),
     RemoveTrackFromPlaylist(i64, i64),
     PlaylistsScrolled(cosmic::iced::widget::scrollable::Viewport),
     PlaylistTracksLoaded(Vec<crate::model::track::Track>),
+    /// Reload the tracks of the playlist being viewed (keeps edit mode)
+    ReloadPlaylistTracks(i64),
+    /// The contents of a playlist changed: refresh counts and the open page
+    PlaylistTracksChanged(i64),
+    /// Toggle the "Add to playlist" popover for a track
+    OpenAddToPlaylistMenu(i64),
+    /// Close the "Add to playlist" popover of a track (ignored if another is open)
+    CloseAddToPlaylistMenu(i64),
+    /// Create a new playlist and add the track to it
+    CreatePlaylistWithTrack(i64),
+    // Favorites
+    /// Toggle the favorite flag of a track (by track id)
+    ToggleFavorite(i64),
+    /// Open the built-in Favorites collection
+    OpenFavorites,
     /// MPRIS D-Bus action received from external controller
     MprisCommand(MprisAction),
     NoOp,
 }
 
 impl AppModel {
+    /// Shared context for the per-track action buttons (favorite, add to playlist).
+    fn track_actions_ctx(&self) -> TrackActionsContext<'_> {
+        TrackActionsContext {
+            playlists: &self.library_playlists,
+            open_menu: self.add_to_playlist_menu,
+            use_dark_text: self.use_dark_text,
+        }
+    }
+
     /// Helper to group tracks into albums for display.
     fn refresh_albums(&self) -> Vec<AlbumData> {
         use std::collections::HashMap;
@@ -362,6 +395,112 @@ impl AppModel {
         let mut artists: Vec<ArtistData> = artists_map.into_values().collect();
         artists.sort_by(|a, b| a.name.cmp(&b.name));
         artists
+    }
+
+    /// Show the Favorites collection and load its tracks from the database.
+    fn open_favorites(&mut self) -> Task<cosmic::Action<Message>> {
+        self.current_view = AppView::Favorites;
+        self.playlist_edit_mode = false;
+        self.add_to_playlist_menu = None;
+        let db = self.database.clone();
+        Task::perform(
+            async move {
+                if let Some(db) = db {
+                    tokio::task::spawn_blocking(move || {
+                        db.get_favorite_tracks().unwrap_or_default()
+                    })
+                    .await
+                    .unwrap_or_default()
+                } else {
+                    Vec::new()
+                }
+            },
+            Message::PlaylistTracksLoaded,
+        )
+        .map(cosmic::Action::App)
+    }
+
+    /// Flip the favorite flag of a track everywhere it is cached in memory,
+    /// then persist the new value in the background.
+    fn toggle_favorite(&mut self, track_id: i64) -> Task<cosmic::Action<Message>> {
+        // The library is the source of truth; fall back to other caches for
+        // tracks that are playing but not (yet) in the library.
+        let current = self
+            .library_tracks
+            .iter()
+            .find(|t| t.id == track_id)
+            .map(|t| t.favorite)
+            .or_else(|| {
+                self.player_state
+                    .current_track
+                    .as_ref()
+                    .filter(|t| t.id == track_id)
+                    .map(|t| t.favorite)
+            })
+            .or_else(|| {
+                self.queue_tracks
+                    .iter()
+                    .find(|t| t.id == track_id)
+                    .map(|t| t.favorite)
+            });
+        let Some(current) = current else {
+            return Task::none();
+        };
+        let favorite = !current;
+
+        let set = |t: &mut Track| {
+            if t.id == track_id {
+                t.favorite = favorite;
+            }
+        };
+        self.library_tracks.iter_mut().for_each(set);
+        self.library_albums
+            .iter_mut()
+            .flat_map(|a| a.tracks.iter_mut())
+            .for_each(set);
+        self.library_artists
+            .iter_mut()
+            .flat_map(|a| a.tracks.iter_mut())
+            .for_each(set);
+        self.playlist_tracks.iter_mut().for_each(set);
+        // The Favorites page lists `playlist_tracks`: keep it in sync so the
+        // heart removes the row (or adds it when favorited from the control bar).
+        if self.current_view == AppView::Favorites {
+            if favorite {
+                if !self.playlist_tracks.iter().any(|t| t.id == track_id)
+                    && let Some(track) = self.library_tracks.iter().find(|t| t.id == track_id)
+                {
+                    self.playlist_tracks.push(track.clone());
+                    self.playlist_tracks.sort_by_key(|t| t.title.to_lowercase());
+                }
+            } else {
+                self.playlist_tracks.retain(|t| t.id != track_id);
+            }
+        }
+        for track in &mut self.queue_tracks {
+            if track.id == track_id {
+                Arc::make_mut(track).favorite = favorite;
+            }
+        }
+        if let Some(track) = self.player_state.current_track.as_mut()
+            && track.id == track_id
+        {
+            Arc::make_mut(track).favorite = favorite;
+        }
+
+        let db = self.database.clone();
+        Task::perform(
+            async move {
+                if let Some(db) = db {
+                    let _ = tokio::task::spawn_blocking(move || {
+                        db.set_track_favorite(track_id, favorite)
+                    })
+                    .await;
+                }
+            },
+            |()| Message::NoOp,
+        )
+        .map(cosmic::Action::App)
     }
 
     /// Update player state metadata based on current queue
@@ -508,6 +647,8 @@ impl cosmic::Application for AppModel {
             playlist_edit_mode: false,
             playlist_tracks: Vec::new(),
             playlists_scroll_y: 0.0,
+            add_to_playlist_menu: None,
+            favorites_playlist: crate::model::playlist::Playlist::favorites(fl!("favorites")),
             default_background_image: background_image.clone(),
             default_background_image_dims: background_image_dims,
             default_theme_colors: (
@@ -710,8 +851,8 @@ impl cosmic::Application for AppModel {
                         &self.library_tracks,
                         &self.covers_cache,
                         current_path,
-                        self.use_dark_text,
                         self.tracks_scroll_offset,
+                        self.track_actions_ctx(),
                     )
                 }
                 NavPage::Albums => {
@@ -728,8 +869,8 @@ impl cosmic::Application for AppModel {
                                     album,
                                     &self.covers_cache,
                                     current_path.as_deref(),
-                                    self.use_dark_text,
                                     *source_artist,
+                                    self.track_actions_ctx(),
                                 )
                             } else {
                                 // Invalid album index, go back to grid
@@ -782,8 +923,8 @@ impl cosmic::Application for AppModel {
                                     album,
                                     &self.covers_cache,
                                     current_path.as_deref(),
-                                    self.use_dark_text,
                                     *source_artist,
+                                    self.track_actions_ctx(),
                                 )
                             } else {
                                 widget::text::body(fl!("album-not-found")).into()
@@ -808,15 +949,28 @@ impl cosmic::Application for AppModel {
                                     &self.playlist_tracks,
                                     &self.covers_cache,
                                     current_path,
-                                    self.use_dark_text,
                                     self.playlist_edit_mode,
+                                    self.track_actions_ctx(),
                                 )
                             } else {
-                                widget::text::body("Playlist não encontrada").into() // TODO: Use fl! macro
+                                widget::text::body(fl!("playlist-not-found")).into()
                             }
+                        }
+                        AppView::Favorites => {
+                            let current_path =
+                                self.current_track_path.as_ref().and_then(|p| p.to_str());
+                            playlist_detail_page::view(
+                                &self.favorites_playlist,
+                                &self.playlist_tracks,
+                                &self.covers_cache,
+                                current_path,
+                                false,
+                                self.track_actions_ctx(),
+                            )
                         }
                         _ => playlists_page::view(
                             &self.library_playlists,
+                            self.library_tracks.iter().filter(|t| t.favorite).count(),
                             &self.covers_cache,
                             self.playlists_scroll_y,
                             self.albums_viewport_h,
@@ -865,7 +1019,7 @@ impl cosmic::Application for AppModel {
                 self.queue_position,
                 &self.covers_cache,
                 self.queue_edit_mode,
-                self.use_dark_text,
+                self.track_actions_ctx(),
             );
 
             // Queue sidebar on LEFT
@@ -1059,7 +1213,8 @@ impl cosmic::Application for AppModel {
             Message::PlayAlbumFromTrack(_, _)
             | Message::PlayTrack(_)
             | Message::PlayArtistTracks(_)
-            | Message::PlayPlaylist(_) => self.update_play_actions(message),
+            | Message::PlayPlaylist(_)
+            | Message::PlayPlaylistFromTrack(_, _) => self.update_play_actions(message),
 
             // --- Settings & window management ---
             Message::WindowMinimize
@@ -1083,6 +1238,11 @@ impl cosmic::Application for AppModel {
             | Message::TogglePlaylistEditMode(_)
             | Message::OpenPlaylistDetail(_)
             | Message::PlaylistTracksLoaded(_)
+            | Message::ReloadPlaylistTracks(_)
+            | Message::PlaylistTracksChanged(_)
+            | Message::OpenAddToPlaylistMenu(_)
+            | Message::CloseAddToPlaylistMenu(_)
+            | Message::CreatePlaylistWithTrack(_)
             | Message::AddTrackToPlaylist(_, _)
             | Message::RemoveTrackFromPlaylist(_, _) => self.update_playlists(message),
 
@@ -1091,6 +1251,10 @@ impl cosmic::Application for AppModel {
             | Message::OpenFolderPicker
             | Message::FileSelected(_)
             | Message::FolderSelected(_) => self.update_file_ops(message),
+
+            // --- Favorites ---
+            Message::ToggleFavorite(track_id) => self.toggle_favorite(track_id),
+            Message::OpenFavorites => self.open_favorites(),
 
             // --- MPRIS D-Bus commands ---
             Message::MprisCommand(ref action) => self.update_mpris(action),
@@ -1865,8 +2029,19 @@ impl AppModel {
         match message {
             Message::NavTo(page) => {
                 self.current_page = page;
+                self.add_to_playlist_menu = None;
                 if page == NavPage::Albums {
                     self.albums_scroll_y = 0.0;
+                }
+                // The back button of a playlist page navigates here: leave the
+                // detail view so the grid is shown again.
+                if page == NavPage::Playlists
+                    && matches!(
+                        self.current_view,
+                        AppView::PlaylistDetail(_) | AppView::Favorites
+                    )
+                {
+                    self.current_view = AppView::Grid;
                 }
             }
             Message::AlbumsScrolled(viewport) => {
@@ -1879,6 +2054,9 @@ impl AppModel {
             }
             Message::PlaylistsScrolled(viewport) => {
                 self.playlists_scroll_y = viewport.absolute_offset().y;
+                // The grid viewport is shared with the albums page
+                self.albums_viewport_h = viewport.bounds().height;
+                self.albums_viewport_w = viewport.bounds().width;
             }
             Message::OpenAlbumDetail(album_idx) => {
                 println!("Telemetry: Opening album detail for index {album_idx}");
@@ -1969,14 +2147,27 @@ impl AppModel {
                 }
             }
             Message::PlayPlaylist(id) => {
-                if let Some(_p) = self.library_playlists.iter().find(|p| p.id == id) {
+                return self.update_play_actions(Message::PlayPlaylistFromTrack(id, 0));
+            }
+            Message::PlayPlaylistFromTrack(playlist_id, track_idx) => {
+                println!("Telemetry: Play playlist {playlist_id} from track {track_idx}");
+                // `playlist_tracks` holds the tracks of the playlist (or Favorites)
+                // currently open, which is the only place this message comes from.
+                let is_open = match self.current_view {
+                    AppView::PlaylistDetail(id) => id == playlist_id,
+                    AppView::Favorites => {
+                        playlist_id == crate::model::playlist::FAVORITES_PLAYLIST_ID
+                    }
+                    _ => false,
+                };
+                if is_open && track_idx < self.playlist_tracks.len() {
                     self.queue_tracks.clear();
                     for t in &self.playlist_tracks {
                         self.queue_tracks.push(std::sync::Arc::new(t.clone()));
                     }
-                    self.queue_position = 0;
+                    self.queue_position = track_idx;
 
-                    if let Some(track) = self.playlist_tracks.first() {
+                    if let Some(track) = self.playlist_tracks.get(track_idx) {
                         self.player_state.current_track = Some(std::sync::Arc::new(track.clone()));
                         let path = track.uri.clone();
                         self.update_queue_metadata();
@@ -1984,6 +2175,7 @@ impl AppModel {
                         return Task::done(cosmic::Action::App(Message::FileSelected(Some(path))));
                     }
                 }
+                self.update_queue_metadata();
             }
             _ => {}
         }
@@ -2261,6 +2453,10 @@ impl AppModel {
             Message::OpenPlaylistDetail(id) => {
                 self.current_view = AppView::PlaylistDetail(id);
                 self.playlist_edit_mode = false;
+                self.add_to_playlist_menu = None;
+                return self.update_playlists(Message::ReloadPlaylistTracks(id));
+            }
+            Message::ReloadPlaylistTracks(id) => {
                 let db = self.database.clone();
                 return Task::perform(
                     async move {
@@ -2281,7 +2477,49 @@ impl AppModel {
             Message::PlaylistTracksLoaded(tracks) => {
                 self.playlist_tracks = tracks;
             }
+            Message::PlaylistTracksChanged(playlist_id) => {
+                let mut tasks = vec![self.update_playlists(Message::LoadPlaylists)];
+                if self.current_view == AppView::PlaylistDetail(playlist_id) {
+                    tasks.push(self.update_playlists(Message::ReloadPlaylistTracks(playlist_id)));
+                }
+                return Task::batch(tasks);
+            }
+            Message::OpenAddToPlaylistMenu(track_id) => {
+                self.add_to_playlist_menu = if self.add_to_playlist_menu == Some(track_id) {
+                    None
+                } else {
+                    Some(track_id)
+                };
+            }
+            Message::CloseAddToPlaylistMenu(track_id) => {
+                if self.add_to_playlist_menu == Some(track_id) {
+                    self.add_to_playlist_menu = None;
+                }
+            }
+            Message::CreatePlaylistWithTrack(track_id) => {
+                self.add_to_playlist_menu = None;
+                let db = self.database.clone();
+                let title = fl!("new-playlist");
+                return Task::perform(
+                    async move {
+                        let db = db?;
+                        tokio::task::spawn_blocking(move || {
+                            let playlist_id = db.create_playlist(title, None).ok()?;
+                            let _ = db.add_track_to_playlist(playlist_id, track_id);
+                            Some(playlist_id)
+                        })
+                        .await
+                        .ok()
+                        .flatten()
+                    },
+                    |playlist_id| {
+                        playlist_id.map_or(Message::LoadPlaylists, Message::PlaylistTracksChanged)
+                    },
+                )
+                .map(cosmic::Action::App);
+            }
             Message::AddTrackToPlaylist(playlist_id, track_id) => {
+                self.add_to_playlist_menu = None;
                 let db = self.database.clone();
                 return Task::perform(
                     async move {
@@ -2292,7 +2530,7 @@ impl AppModel {
                             .await;
                         }
                     },
-                    |()| Message::NoOp,
+                    move |()| Message::PlaylistTracksChanged(playlist_id),
                 )
                 .map(cosmic::Action::App);
             }
@@ -2307,7 +2545,7 @@ impl AppModel {
                             .await;
                         }
                     },
-                    move |()| Message::OpenPlaylistDetail(playlist_id),
+                    move |()| Message::PlaylistTracksChanged(playlist_id),
                 )
                 .map(cosmic::Action::App);
             }

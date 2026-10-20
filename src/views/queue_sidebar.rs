@@ -4,7 +4,9 @@
 // Features: Edit mode, Clear, Toggle visibility
 
 use crate::app::Message;
+use crate::fl;
 use crate::model::track::Track;
+use crate::views::track_actions::{self, TrackActionsContext};
 use cosmic::Element;
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
@@ -65,9 +67,9 @@ fn format_remaining_time(seconds: f64) -> String {
     if total_minutes >= 60 {
         let hours = total_minutes / 60;
         let mins = total_minutes % 60;
-        format!("{hours}h {mins}min restantes")
+        fl!("queue-remaining-hours", hours = hours, minutes = mins)
     } else {
-        format!("{total_minutes} min restantes")
+        fl!("queue-remaining-minutes", minutes = total_minutes)
     }
 }
 
@@ -76,8 +78,8 @@ fn view_sidebar_header(
     remaining_time: f64,
     edit_mode: bool,
 ) -> Element<'static, Message> {
-    let title = widget::text::title4("Fila de Reprodução"); // TODO: Use fl! macro
-    let count_badge = widget::text::caption(format!("{track_count} faixas")).size(11); // TODO: Use fl! macro
+    let title = widget::text::title4(fl!("queue-title"));
+    let count_badge = widget::text::caption(fl!("track-count", count = track_count)).size(11);
     let time_label = widget::text::caption(format_remaining_time(remaining_time)).size(11);
 
     let clear_button = widget::button::icon(widget::icon::from_name("edit-clear-all-symbolic"))
@@ -128,7 +130,7 @@ fn view_sidebar_track_list<'a>(
     queue_position: usize,
     covers: &'a HashMap<i64, widget::image::Handle>,
     edit_mode: bool,
-    use_dark_text: bool,
+    ctx: TrackActionsContext<'_>,
 ) -> Element<'static, Message> {
     let track_rows: Vec<Element<'static, Message>> = queue_tracks
         .iter()
@@ -136,22 +138,15 @@ fn view_sidebar_track_list<'a>(
         .map(|(idx, track)| {
             let is_current = idx == queue_position;
             let cover = track.cover_art_id.and_then(|id| covers.get(&id)).cloned();
-            queue_track_row(
-                idx,
-                track.as_ref(),
-                cover,
-                is_current,
-                edit_mode,
-                use_dark_text,
-            )
+            queue_track_row(idx, track.as_ref(), cover, is_current, edit_mode, ctx)
         })
         .collect();
 
     if track_rows.is_empty() {
         widget::container(
             widget::column::with_capacity(2)
-                .push(widget::text::body("Fila vazia").size(16)) // TODO: Use fl! macro
-                .push(widget::text::caption("Adicione músicas para começar").size(12)) // TODO: Use fl! macro
+                .push(widget::text::body(fl!("queue-empty")).size(16))
+                .push(widget::text::caption(fl!("queue-empty-hint")).size(12))
                 .spacing(8)
                 .align_x(cosmic::iced::alignment::Horizontal::Center),
         )
@@ -181,13 +176,15 @@ fn view_sidebar_track_list<'a>(
 /// - `queue_position`: Current playing position
 /// - `covers`: `HashMap` of cover art handles
 /// - `edit_mode`: If true, show edit controls (move up/down, remove)
+/// - `ctx`: Shared context for the per-track action buttons
 pub fn view(
     queue_tracks: &[Arc<Track>],
     queue_position: usize,
     covers: &HashMap<i64, widget::image::Handle>,
     edit_mode: bool,
-    use_dark_text: bool,
+    ctx: TrackActionsContext<'_>,
 ) -> Element<'static, Message> {
+    let use_dark_text = ctx.use_dark_text;
     // Header row 1: Title + count
     let track_count = queue_tracks.len();
 
@@ -199,13 +196,7 @@ pub fn view(
         .sum();
 
     let header = view_sidebar_header(track_count, remaining_time, edit_mode);
-    let tracks_list = view_sidebar_track_list(
-        queue_tracks,
-        queue_position,
-        covers,
-        edit_mode,
-        use_dark_text,
-    );
+    let tracks_list = view_sidebar_track_list(queue_tracks, queue_position, covers, edit_mode, ctx);
 
     // Sidebar container
     let content = widget::column::with_capacity(2)
@@ -379,15 +370,17 @@ fn view_normal_mode_row(
     cover_widget: Element<'static, Message>,
     info_column: Element<'static, Message>,
     playing_icon: Element<'static, Message>,
+    actions: Element<'static, Message>,
     is_current: bool,
     use_dark_text: bool,
 ) -> Element<'static, Message> {
     let drag_cover = widget::dnd_source(cover_widget).drag_content(move || QueueItemMime(idx));
 
-    let row_content = widget::row::with_capacity(3)
+    let row_content = widget::row::with_capacity(4)
         .push(drag_cover)
         .push(info_column)
         .push(playing_icon)
+        .push(actions)
         .spacing(10)
         .padding([6, 12])
         .align_y(Alignment::Center);
@@ -422,8 +415,9 @@ fn queue_track_row(
     cover: Option<widget::image::Handle>,
     is_current: bool,
     edit_mode: bool,
-    use_dark_text: bool,
+    ctx: TrackActionsContext<'_>,
 ) -> Element<'static, Message> {
+    let use_dark_text = ctx.use_dark_text;
     let cover_widget = view_row_cover(cover);
 
     let playing_icon: Element<Message> = if is_current {
@@ -459,11 +453,13 @@ fn queue_track_row(
             use_dark_text,
         )
     } else {
+        let actions = track_actions::row_actions(track.id, track.favorite, ctx);
         view_normal_mode_row(
             idx,
             cover_widget,
             info_column,
             playing_icon,
+            actions,
             is_current,
             use_dark_text,
         )

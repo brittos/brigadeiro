@@ -3,8 +3,10 @@
 // Playlist Detail Page - Shows playlist cover collage, info, track list and edit controls
 
 use crate::app::Message;
+use crate::fl;
 use crate::model::playlist::Playlist;
 use crate::model::track::Track;
+use crate::views::track_actions::TrackActionsContext;
 use crate::views::track_entry;
 use cosmic::Element;
 use cosmic::iced::{Alignment, Length};
@@ -19,7 +21,7 @@ fn view_playlist_header<'a>(playlist: &'a Playlist, edit_mode: bool) -> Element<
 
     // Header with title or input
     let title_widget: Element<Message> = if edit_mode {
-        widget::text_input("Título da Playlist", &playlist.title) // TODO: Use fl! macro
+        widget::text_input(fl!("playlist-title-placeholder"), &playlist.title)
             .on_input(|title| Message::RenamePlaylist(playlist.id, title))
             .width(Length::Fill)
             .into()
@@ -27,11 +29,14 @@ fn view_playlist_header<'a>(playlist: &'a Playlist, edit_mode: bool) -> Element<
         widget::text::title3(playlist.title.clone()).into()
     };
 
-    widget::row::with_capacity(3)
+    let mut header = widget::row::with_capacity(4)
         .push(back_button)
         .push(title_widget)
-        .push(widget::horizontal_space().width(Length::Fill))
-        .push(
+        .push(widget::horizontal_space().width(Length::Fill));
+
+    // The Favorites collection is not editable
+    if !playlist.is_favorites() {
+        header = header.push(
             widget::button::icon(widget::icon::from_name(if edit_mode {
                 "emblem-ok-symbolic"
             } else {
@@ -39,7 +44,10 @@ fn view_playlist_header<'a>(playlist: &'a Playlist, edit_mode: bool) -> Element<
             }))
             .on_press(Message::TogglePlaylistEditMode(!edit_mode))
             .class(cosmic::theme::Button::Text),
-        )
+        );
+    }
+
+    header
         .spacing(12)
         .align_y(Alignment::Center)
         .padding([16, 16])
@@ -99,25 +107,34 @@ fn view_playlist_info<'a>(
     let duration_str = format!("{}:{:02}", duration_secs / 60, duration_secs % 60);
 
     let desc_widget: Element<Message> = if edit_mode {
-        widget::text_input("Descrição", playlist.description.as_deref().unwrap_or(""))
-            .on_input(|desc| Message::UpdatePlaylistDescription(playlist.id, desc))
-            .width(Length::Fill)
-            .into()
+        widget::text_input(
+            fl!("playlist-description-placeholder"),
+            playlist.description.as_deref().unwrap_or(""),
+        )
+        .on_input(|desc| Message::UpdatePlaylistDescription(playlist.id, desc))
+        .width(Length::Fill)
+        .into()
     } else {
         widget::text::body(playlist.description.clone().unwrap_or_default()).into()
     };
 
-    let meta_text = format!("{track_count} músicas • {duration_str}");
+    let meta_text = fl!(
+        "playlist-stats",
+        count = track_count,
+        duration = duration_str
+    );
     let playlist_meta = widget::text::caption(meta_text);
 
     // Play buttons
-    let play_all_btn = widget::button::suggested("▶ Reproduzir")
+    let play_all_btn = widget::button::suggested(fl!("btn-play"))
+        .leading_icon(widget::icon::from_name("media-playback-start-symbolic"))
         .on_press(Message::PlayPlaylist(playlist.id))
         .class(crate::views::suggested_button_style(use_dark_text));
 
-    let delete_btn = if edit_mode {
+    let delete_btn = if edit_mode && !playlist.is_favorites() {
         Some(
-            widget::button::standard("🗑 Deletar")
+            widget::button::standard(fl!("delete-playlist"))
+                .leading_icon(widget::icon::from_name("user-trash-symbolic"))
                 .on_press(Message::DeletePlaylist(playlist.id))
                 .class(cosmic::theme::Button::Destructive),
         )
@@ -141,10 +158,23 @@ fn view_playlist_info<'a>(
 }
 
 fn view_track_list<'a>(
+    playlist: &'a Playlist,
     tracks: &'a [Track],
     current_track_path: Option<&'a str>,
-    use_dark_text: bool,
+    edit_mode: bool,
+    ctx: TrackActionsContext<'_>,
 ) -> Element<'a, Message> {
+    if tracks.is_empty() && playlist.is_favorites() {
+        return widget::container(
+            widget::text::body(fl!("favorites-empty"))
+                .width(Length::Fill)
+                .align_x(cosmic::iced::alignment::Horizontal::Center),
+        )
+        .width(Length::Fill)
+        .padding([16, 16])
+        .into();
+    }
+
     let track_elements: Vec<Element<'static, Message>> = tracks
         .iter()
         .enumerate()
@@ -154,15 +184,26 @@ fn view_track_list<'a>(
             #[allow(clippy::cast_possible_truncation)]
             let track_number = (idx + 1) as u32; // Safe: idx is a small index
 
-            // Reusing track_entry but we might need a custom one for playlists to allow removal
+            // Playlist positions are 1-based in the database and kept contiguous
+            let position = i64::try_from(idx + 1).unwrap_or(i64::MAX);
+            let remove_btn: Option<Element<'static, Message>> = edit_mode.then(|| {
+                widget::tooltip(
+                    widget::button::icon(widget::icon::from_name("user-trash-symbolic"))
+                        .on_press(Message::RemoveTrackFromPlaylist(playlist.id, position))
+                        .class(cosmic::theme::Button::Destructive),
+                    widget::text::body(fl!("remove-from-playlist")),
+                    widget::tooltip::Position::Top,
+                )
+                .into()
+            });
+
             track_entry::view(
-                0, // Dummy index for now, we'll fix Message handling
-                idx,
+                track,
                 track_number,
-                track.title.clone(),
-                track.duration,
                 is_current,
-                use_dark_text,
+                Message::PlayPlaylistFromTrack(playlist.id, idx),
+                remove_btn,
+                ctx,
             )
         })
         .collect();
@@ -179,9 +220,10 @@ pub fn view<'a>(
     tracks: &'a [Track],
     covers: &'a HashMap<i64, widget::image::Handle>,
     current_track_path: Option<&'a str>,
-    use_dark_text: bool,
     edit_mode: bool,
+    ctx: TrackActionsContext<'_>,
 ) -> Element<'a, Message> {
+    let use_dark_text = ctx.use_dark_text;
     let header = view_playlist_header(playlist, edit_mode);
     let cover_widget = view_playlist_cover(tracks, covers);
 
@@ -197,7 +239,7 @@ pub fn view<'a>(
         use_dark_text,
         edit_mode,
     );
-    let tracks_list = view_track_list(tracks, current_track_path, use_dark_text);
+    let tracks_list = view_track_list(playlist, tracks, current_track_path, edit_mode, ctx);
 
     // Playlist header: cover + info side by side
     let playlist_header = widget::row::with_capacity(2)

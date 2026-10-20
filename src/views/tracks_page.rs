@@ -4,6 +4,7 @@
 
 use crate::app::Message;
 use crate::model::track::Track;
+use crate::views::track_actions::{self, TrackActionsContext};
 use cosmic::Element;
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
@@ -25,12 +26,13 @@ pub fn view<'a>(
     tracks: &'a [Track],
     covers: &'a HashMap<i64, widget::image::Handle>,
     current_track_path: Option<String>,
-    use_dark_text: bool,
     scroll_offset: cosmic::iced::widget::scrollable::AbsoluteOffset,
+    ctx: TrackActionsContext<'a>,
 ) -> Element<'a, Message> {
+    let use_dark_text = ctx.use_dark_text;
     if tracks.is_empty() {
         return widget::container(
-            widget::text::title3("Nenhuma música encontrada")
+            widget::text::title3(fl!("no-tracks"))
                 .width(Length::Fill)
                 .align_x(cosmic::iced::alignment::Horizontal::Center),
         )
@@ -78,7 +80,7 @@ pub fn view<'a>(
                     .as_ref()
                     .is_some_and(|p| p == &track.uri.to_string_lossy().to_string());
                 let cover = track.cover_art_id.and_then(|id| covers.get(&id)).cloned();
-                track_rows.push(track_row(idx, track, cover, is_current, use_dark_text));
+                track_rows.push(track_row(idx, track, cover, is_current, ctx));
             } else {
                 // Placeholder for off-screen items to maintain scroll height
                 track_rows.push(
@@ -138,8 +140,9 @@ fn track_row(
     track: &Track,
     cover: Option<widget::image::Handle>,
     is_current: bool,
-    use_dark_text: bool,
+    ctx: TrackActionsContext<'_>,
 ) -> Element<'static, Message> {
+    let use_dark_text = ctx.use_dark_text;
     // Format duration as mm:ss
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let secs = track.duration.max(0.0) as u64; // Safe: duration is always non-negative
@@ -231,9 +234,13 @@ fn track_row(
         .on_press(Message::AddToQueue(idx))
         .class(cosmic::theme::Button::Text);
 
-    // Full row layout with add button
-    let row_content = widget::row::with_capacity(2)
+    // Favorite / add to playlist
+    let actions = track_actions::row_actions(track.id, track.favorite, ctx);
+
+    // Full row layout with action buttons
+    let row_content = widget::row::with_capacity(3)
         .push(info_container)
+        .push(actions)
         .push(add_button)
         .spacing(8)
         .padding([8, 16])

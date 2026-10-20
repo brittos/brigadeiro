@@ -45,6 +45,8 @@ pub struct Track {
     pub secondary_color: Option<Color>,
     /// Tertiary color extracted from cover
     pub tertiary_color: Option<Color>,
+    /// Whether the user marked this track as a favorite
+    pub favorite: bool,
 }
 
 impl Track {
