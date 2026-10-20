@@ -3,6 +3,7 @@
 // Playlist Detail Page - Shows playlist cover collage, info, track list and edit controls
 
 use crate::app::Message;
+use crate::fl;
 use crate::model::playlist::Playlist;
 use crate::model::track::Track;
 use crate::views::track_actions::TrackActionsContext;
@@ -28,11 +29,14 @@ fn view_playlist_header<'a>(playlist: &'a Playlist, edit_mode: bool) -> Element<
         widget::text::title3(playlist.title.clone()).into()
     };
 
-    widget::row::with_capacity(3)
+    let mut header = widget::row::with_capacity(4)
         .push(back_button)
         .push(title_widget)
-        .push(widget::horizontal_space().width(Length::Fill))
-        .push(
+        .push(widget::horizontal_space().width(Length::Fill));
+
+    // The Favorites collection is not editable
+    if !playlist.is_favorites() {
+        header = header.push(
             widget::button::icon(widget::icon::from_name(if edit_mode {
                 "emblem-ok-symbolic"
             } else {
@@ -40,7 +44,10 @@ fn view_playlist_header<'a>(playlist: &'a Playlist, edit_mode: bool) -> Element<
             }))
             .on_press(Message::TogglePlaylistEditMode(!edit_mode))
             .class(cosmic::theme::Button::Text),
-        )
+        );
+    }
+
+    header
         .spacing(12)
         .align_y(Alignment::Center)
         .padding([16, 16])
@@ -142,10 +149,22 @@ fn view_playlist_info<'a>(
 }
 
 fn view_track_list<'a>(
+    playlist: &'a Playlist,
     tracks: &'a [Track],
     current_track_path: Option<&'a str>,
     ctx: TrackActionsContext<'_>,
 ) -> Element<'a, Message> {
+    if tracks.is_empty() && playlist.is_favorites() {
+        return widget::container(
+            widget::text::body(fl!("favorites-empty"))
+                .width(Length::Fill)
+                .align_x(cosmic::iced::alignment::Horizontal::Center),
+        )
+        .width(Length::Fill)
+        .padding([16, 16])
+        .into();
+    }
+
     let track_elements: Vec<Element<'static, Message>> = tracks
         .iter()
         .enumerate()
@@ -197,7 +216,7 @@ pub fn view<'a>(
         use_dark_text,
         edit_mode,
     );
-    let tracks_list = view_track_list(tracks, current_track_path, ctx);
+    let tracks_list = view_track_list(playlist, tracks, current_track_path, ctx);
 
     // Playlist header: cover + info side by side
     let playlist_header = widget::row::with_capacity(2)

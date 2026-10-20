@@ -54,6 +54,8 @@ pub enum AppView {
     ArtistDetail(usize), // index into library_artists
     /// Playlist detail page with tracks
     PlaylistDetail(i64), // playlist ID
+    /// Built-in "Favorites" collection, rendered with the playlist detail page
+    Favorites,
 }
 
 /// Calculate perceived luminance of a color (0.0 = black, 1.0 = white)
@@ -157,6 +159,8 @@ pub struct AppModel {
     playlists_scroll_y: f32,
     /// Track id whose "Add to playlist" menu is open, if any
     add_to_playlist_menu: Option<i64>,
+    /// Synthetic playlist used to render the Favorites collection
+    favorites_playlist: crate::model::playlist::Playlist,
 
     // Default cover art assets for fallback
     /// Default background image handle
@@ -284,6 +288,8 @@ pub enum Message {
     // Favorites
     /// Toggle the favorite flag of a track (by track id)
     ToggleFavorite(i64),
+    /// Open the built-in Favorites collection
+    OpenFavorites,
     /// MPRIS D-Bus action received from external controller
     MprisCommand(MprisAction),
     NoOp,
@@ -422,6 +428,21 @@ impl AppModel {
             .flat_map(|a| a.tracks.iter_mut())
             .for_each(set);
         self.playlist_tracks.iter_mut().for_each(set);
+        // The Favorites page lists `playlist_tracks`: keep it in sync so the
+        // heart removes the row (or adds it when favorited from the control bar).
+        if self.current_view == AppView::Favorites {
+            if favorite {
+                if !self.playlist_tracks.iter().any(|t| t.id == track_id)
+                    && let Some(track) = self.library_tracks.iter().find(|t| t.id == track_id)
+                {
+                    self.playlist_tracks.push(track.clone());
+                    self.playlist_tracks
+                        .sort_by_key(|t| t.title.to_lowercase());
+                }
+            } else {
+                self.playlist_tracks.retain(|t| t.id != track_id);
+            }
+        }
         for track in &mut self.queue_tracks {
             if track.id == track_id {
                 Arc::make_mut(track).favorite = favorite;
@@ -593,6 +614,7 @@ impl cosmic::Application for AppModel {
             playlist_tracks: Vec::new(),
             playlists_scroll_y: 0.0,
             add_to_playlist_menu: None,
+            favorites_playlist: crate::model::playlist::Playlist::favorites(fl!("favorites")),
             default_background_image: background_image.clone(),
             default_background_image_dims: background_image_dims,
             default_theme_colors: (
@@ -897,11 +919,24 @@ impl cosmic::Application for AppModel {
                                     self.track_actions_ctx(),
                                 )
                             } else {
-                                widget::text::body("Playlist não encontrada").into() // TODO: Use fl! macro
+                                widget::text::body(fl!("playlist-not-found")).into()
                             }
+                        }
+                        AppView::Favorites => {
+                            let current_path =
+                                self.current_track_path.as_ref().and_then(|p| p.to_str());
+                            playlist_detail_page::view(
+                                &self.favorites_playlist,
+                                &self.playlist_tracks,
+                                &self.covers_cache,
+                                current_path,
+                                false,
+                                self.track_actions_ctx(),
+                            )
                         }
                         _ => playlists_page::view(
                             &self.library_playlists,
+                            self.library_tracks.iter().filter(|t| t.favorite).count(),
                             &self.covers_cache,
                             self.playlists_scroll_y,
                             self.albums_viewport_h,
@@ -1179,6 +1214,27 @@ impl cosmic::Application for AppModel {
 
             // --- Favorites ---
             Message::ToggleFavorite(track_id) => self.toggle_favorite(track_id),
+            Message::OpenFavorites => {
+                self.current_view = AppView::Favorites;
+                self.playlist_edit_mode = false;
+                self.add_to_playlist_menu = None;
+                let db = self.database.clone();
+                Task::perform(
+                    async move {
+                        if let Some(db) = db {
+                            tokio::task::spawn_blocking(move || {
+                                db.get_favorite_tracks().unwrap_or_default()
+                            })
+                            .await
+                            .unwrap_or_default()
+                        } else {
+                            Vec::new()
+                        }
+                    },
+                    Message::PlaylistTracksLoaded,
+                )
+                .map(cosmic::Action::App)
+            }
 
             // --- MPRIS D-Bus commands ---
             Message::MprisCommand(ref action) => self.update_mpris(action),
@@ -1953,8 +2009,19 @@ impl AppModel {
         match message {
             Message::NavTo(page) => {
                 self.current_page = page;
+                self.add_to_playlist_menu = None;
                 if page == NavPage::Albums {
                     self.albums_scroll_y = 0.0;
+                }
+                // The back button of a playlist page navigates here: leave the
+                // detail view so the grid is shown again.
+                if page == NavPage::Playlists
+                    && matches!(
+                        self.current_view,
+                        AppView::PlaylistDetail(_) | AppView::Favorites
+                    )
+                {
+                    self.current_view = AppView::Grid;
                 }
             }
             Message::AlbumsScrolled(viewport) => {
@@ -1967,6 +2034,9 @@ impl AppModel {
             }
             Message::PlaylistsScrolled(viewport) => {
                 self.playlists_scroll_y = viewport.absolute_offset().y;
+                // The grid viewport is shared with the albums page
+                self.albums_viewport_h = viewport.bounds().height;
+                self.albums_viewport_w = viewport.bounds().width;
             }
             Message::OpenAlbumDetail(album_idx) => {
                 println!("Telemetry: Opening album detail for index {album_idx}");
