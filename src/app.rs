@@ -406,9 +406,11 @@ impl AppModel {
         Task::perform(
             async move {
                 if let Some(db) = db {
-                    tokio::task::spawn_blocking(move || db.get_favorite_tracks().unwrap_or_default())
-                        .await
-                        .unwrap_or_default()
+                    tokio::task::spawn_blocking(move || {
+                        db.get_favorite_tracks().unwrap_or_default()
+                    })
+                    .await
+                    .unwrap_or_default()
                 } else {
                     Vec::new()
                 }

@@ -797,7 +797,8 @@ impl Database {
         let tx = conn.unchecked_transaction()?;
 
         // 1. Determine new position (append at end)
-        // We need to join everything to find the max position for this playlist
+        // We need to join everything to find the max position for this playlist.
+        // MAX() over an empty set yields a single NULL row, hence Option<i64>.
         let max_pos: Option<i64> = tx
             .query_row(
                 "SELECT MAX(pe.playlist_position) 
@@ -805,9 +806,10 @@ impl Database {
              JOIN Playlist_Entry_Playlist_Junction pepj ON pe.id = pepj.playlist_entry_id
              WHERE pepj.playlist_id = ?",
                 [playlist_id],
-                |row| row.get(0),
+                |row| row.get::<_, Option<i64>>(0),
             )
-            .optional()?;
+            .optional()?
+            .flatten();
 
         let next_pos = max_pos.unwrap_or(0) + 1;
 
@@ -937,5 +939,152 @@ impl Database {
             .collect();
 
         Ok(ids)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Database;
+    use crate::utils::metadata::AudioMetadata;
+    use std::path::PathBuf;
+
+    fn insert_track(db: &Database, title: &str) -> i64 {
+        let metadata = AudioMetadata {
+            title: Some(title.to_string()),
+            artist: Some("Artist".to_string()),
+            album: Some("Album".to_string()),
+            duration: 120.0,
+            file_type: "mp3".to_string(),
+            ..Default::default()
+        };
+        let path = PathBuf::from(format!("/music/{title}.mp3"));
+        db.save_track_metadata(&path, &metadata)
+            .expect("track should be saved")
+    }
+
+    #[test]
+    fn tracks_are_not_favorite_by_default() {
+        let db = Database::open_in_memory().unwrap();
+        insert_track(&db, "a");
+
+        let tracks = db.get_all_tracks().unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert!(!tracks[0].favorite);
+        assert!(db.get_favorite_tracks().unwrap().is_empty());
+    }
+
+    #[test]
+    fn set_track_favorite_round_trips() {
+        let db = Database::open_in_memory().unwrap();
+        let a = insert_track(&db, "a");
+        let b = insert_track(&db, "b");
+
+        db.set_track_favorite(a, true).unwrap();
+
+        let favorites = db.get_favorite_tracks().unwrap();
+        assert_eq!(favorites.iter().map(|t| t.id).collect::<Vec<_>>(), vec![a]);
+        assert!(favorites[0].favorite);
+
+        // The flag is also visible through the regular library query
+        let all = db.get_all_tracks().unwrap();
+        assert!(all.iter().find(|t| t.id == a).unwrap().favorite);
+        assert!(!all.iter().find(|t| t.id == b).unwrap().favorite);
+
+        db.set_track_favorite(a, false).unwrap();
+        assert!(db.get_favorite_tracks().unwrap().is_empty());
+    }
+
+    #[test]
+    fn favorite_tracks_are_sorted_by_title() {
+        let db = Database::open_in_memory().unwrap();
+        let zeta = insert_track(&db, "Zeta");
+        let alpha = insert_track(&db, "alpha");
+        db.set_track_favorite(zeta, true).unwrap();
+        db.set_track_favorite(alpha, true).unwrap();
+
+        let ids: Vec<i64> = db
+            .get_favorite_tracks()
+            .unwrap()
+            .iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(ids, vec![alpha, zeta]);
+    }
+
+    #[test]
+    fn add_and_remove_tracks_from_playlist_updates_count_and_order() {
+        let db = Database::open_in_memory().unwrap();
+        let a = insert_track(&db, "a");
+        let b = insert_track(&db, "b");
+        let c = insert_track(&db, "c");
+        let playlist = db.create_playlist("Mix".to_string(), None).unwrap();
+
+        // Empty playlist reports zero tracks
+        let playlists = db.get_all_playlists().unwrap();
+        assert_eq!(playlists.len(), 1);
+        assert_eq!(playlists[0].track_count(), 0);
+
+        db.add_track_to_playlist(playlist, a).unwrap();
+        db.add_track_to_playlist(playlist, b).unwrap();
+        db.add_track_to_playlist(playlist, c).unwrap();
+
+        let playlists = db.get_all_playlists().unwrap();
+        assert_eq!(playlists[0].track_count(), 3);
+        assert_eq!(playlists[0].track_ids, vec![a, b, c]);
+
+        let ids: Vec<i64> = db
+            .get_playlist_tracks(playlist)
+            .unwrap()
+            .iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(ids, vec![a, b, c]);
+
+        // Remove the middle entry (positions are 1-based) and check reordering
+        db.remove_track_from_playlist(playlist, 2).unwrap();
+
+        let ids: Vec<i64> = db
+            .get_playlist_tracks(playlist)
+            .unwrap()
+            .iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(ids, vec![a, c]);
+        assert_eq!(db.get_all_playlists().unwrap()[0].track_count(), 2);
+
+        // Removing position 2 again now removes `c`, proving positions were compacted
+        db.remove_track_from_playlist(playlist, 2).unwrap();
+        let ids: Vec<i64> = db
+            .get_playlist_tracks(playlist)
+            .unwrap()
+            .iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(ids, vec![a]);
+    }
+
+    #[test]
+    fn same_track_can_appear_twice_in_a_playlist() {
+        let db = Database::open_in_memory().unwrap();
+        let a = insert_track(&db, "a");
+        let playlist = db.create_playlist("Mix".to_string(), None).unwrap();
+
+        db.add_track_to_playlist(playlist, a).unwrap();
+        db.add_track_to_playlist(playlist, a).unwrap();
+
+        assert_eq!(db.get_all_playlists().unwrap()[0].track_count(), 2);
+    }
+
+    #[test]
+    fn playlist_tracks_carry_the_favorite_flag() {
+        let db = Database::open_in_memory().unwrap();
+        let a = insert_track(&db, "a");
+        let playlist = db.create_playlist("Mix".to_string(), None).unwrap();
+        db.add_track_to_playlist(playlist, a).unwrap();
+        db.set_track_favorite(a, true).unwrap();
+
+        let tracks = db.get_playlist_tracks(playlist).unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert!(tracks[0].favorite);
     }
 }
