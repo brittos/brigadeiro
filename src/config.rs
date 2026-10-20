@@ -26,30 +26,6 @@ pub enum AlbumSort {
     TrackCount,
 }
 
-impl AlbumSort {
-    /// Get display name for the sort option
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            AlbumSort::Title => "Título do Álbum",
-            AlbumSort::Artist => "Nome do Artista",
-            AlbumSort::ReleaseDate => "Data de Lançamento",
-            AlbumSort::Duration => "Duração Total",
-            AlbumSort::TrackCount => "Número de Faixas",
-        }
-    }
-
-    /// Get all sort options for dropdown
-    pub fn all() -> &'static [AlbumSort] {
-        &[
-            AlbumSort::Title,
-            AlbumSort::Artist,
-            AlbumSort::ReleaseDate,
-            AlbumSort::Duration,
-            AlbumSort::TrackCount,
-        ]
-    }
-}
-
 /// Sort order options for artist grid
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ArtistSort {
@@ -57,24 +33,6 @@ pub enum ArtistSort {
     Name,
     AlbumCount,
     TrackCount,
-}
-
-impl ArtistSort {
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            ArtistSort::Name => "Nome do Artista",
-            ArtistSort::AlbumCount => "Número de Álbuns",
-            ArtistSort::TrackCount => "Número de Faixas",
-        }
-    }
-
-    pub fn all() -> &'static [ArtistSort] {
-        &[
-            ArtistSort::Name,
-            ArtistSort::AlbumCount,
-            ArtistSort::TrackCount,
-        ]
-    }
 }
 
 /// Sort order options for track list
@@ -86,28 +44,6 @@ pub enum TrackSort {
     Artist,
     ReleaseDate,
     Duration,
-}
-
-impl TrackSort {
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            TrackSort::Title => "Título da Faixa",
-            TrackSort::Album => "Título do Álbum",
-            TrackSort::Artist => "Nome do Artista",
-            TrackSort::ReleaseDate => "Data de Lançamento",
-            TrackSort::Duration => "Duração",
-        }
-    }
-
-    pub fn all() -> &'static [TrackSort] {
-        &[
-            TrackSort::Title,
-            TrackSort::Album,
-            TrackSort::Artist,
-            TrackSort::ReleaseDate,
-            TrackSort::Duration,
-        ]
-    }
 }
 
 /// Main configuration struct for Brigadeiro
@@ -201,21 +137,6 @@ impl Config {
             self.music_folders.push(folder);
         }
     }
-
-    /// Remove a music folder from the configuration
-    pub fn remove_music_folder(&mut self, folder: &str) -> bool {
-        if let Some(pos) = self.music_folders.iter().position(|f| f == folder) {
-            self.music_folders.remove(pos);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Check if any music folders are configured
-    pub fn has_music_folders(&self) -> bool {
-        !self.music_folders.is_empty()
-    }
 }
 
 #[cfg(test)]
@@ -240,14 +161,5 @@ mod tests {
         // Adding duplicate should not add
         config.add_music_folder("/home/user/Music".to_string());
         assert_eq!(config.music_folders.len(), 1);
-    }
-
-    #[test]
-    fn test_remove_music_folder() {
-        let mut config = Config::default();
-        config.add_music_folder("/home/user/Music".to_string());
-        assert!(config.remove_music_folder("/home/user/Music"));
-        assert!(config.music_folders.is_empty());
-        assert!(!config.remove_music_folder("/nonexistent"));
     }
 }

@@ -28,7 +28,6 @@ use cosmic::widget::{self};
 use tokio::sync::mpsc;
 
 const APP_ID: &str = "io.github.brittos.brigadeiro";
-const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 pub const TRACKS_SCROLL_ID: &str = "tracks_scroll";
 
 /// Navigation pages for the library view
@@ -182,7 +181,6 @@ pub enum Message {
     LoadMusic,
     MusicLoaded(Option<crate::utils::metadata::AudioMetadata>),
     // File/Folder picker
-    OpenFilePicker,
     FileSelected(Option<std::path::PathBuf>),
     OpenFolderPicker,
     FolderSelected(Option<std::path::PathBuf>),
@@ -212,8 +210,6 @@ pub enum Message {
     WindowCreated(cosmic::iced::window::Id),
     /// Window was closed
     WindowClosed(cosmic::iced::window::Id),
-    /// Settings window was closed
-    SettingsWindowClosed,
     // Library
     LibraryLoaded(Vec<crate::model::track::Track>),
     /// Background processing results for visual metadata (batch)
@@ -236,8 +232,6 @@ pub enum Message {
     OpenSettings,
     /// Settings dialog message
     Settings(SettingsMessage),
-    /// Change settings page
-    SettingsChangePage(SettingsPage),
     /// Open album detail page (from albums grid)
     OpenAlbumDetail(usize),
     /// Open album detail page from artist detail
@@ -506,18 +500,6 @@ impl AppModel {
     /// Update player state metadata based on current queue
     fn update_queue_metadata(&mut self) {
         self.player_state.is_empty = self.queue_tracks.is_empty();
-
-        // Calculate total remaining time from current position to end
-        let remaining_secs: f64 = if self.queue_position < self.queue_tracks.len() {
-            self.queue_tracks[self.queue_position..]
-                .iter()
-                .map(|t| t.duration)
-                .sum()
-        } else {
-            0.0
-        };
-
-        self.player_state.queue_time_remaining = remaining_secs;
 
         // Sync MPRIS capabilities (CanGoNext/CanGoPrevious)
         self.mpris_send_capabilities();
@@ -1223,9 +1205,7 @@ impl cosmic::Application for AppModel {
             | Message::WindowDrag
             | Message::WindowCreated(_)
             | Message::WindowClosed(_)
-            | Message::SettingsWindowClosed
             | Message::OpenSettings
-            | Message::SettingsChangePage(_)
             | Message::Settings(_) => self.update_settings_window(message),
 
             // --- Playlists CRUD ---
@@ -1247,10 +1227,9 @@ impl cosmic::Application for AppModel {
             | Message::RemoveTrackFromPlaylist(_, _) => self.update_playlists(message),
 
             // --- File/folder operations ---
-            Message::OpenFilePicker
-            | Message::OpenFolderPicker
-            | Message::FileSelected(_)
-            | Message::FolderSelected(_) => self.update_file_ops(message),
+            Message::OpenFolderPicker | Message::FileSelected(_) | Message::FolderSelected(_) => {
+                self.update_file_ops(message)
+            }
 
             // --- Favorites ---
             Message::ToggleFavorite(track_id) => self.toggle_favorite(track_id),
@@ -2223,9 +2202,6 @@ impl AppModel {
                     self.settings_window_id = None;
                 }
             }
-            Message::SettingsWindowClosed => {
-                self.settings_window_id = None;
-            }
             Message::OpenSettings => {
                 if self.settings_window_id.is_some() {
                     return Task::none();
@@ -2237,9 +2213,6 @@ impl AppModel {
                 });
                 self.settings_window_id = Some(id);
                 return task.map(|id| cosmic::Action::App(Message::WindowCreated(id)));
-            }
-            Message::SettingsChangePage(page) => {
-                self.settings_page = page;
             }
             Message::Settings(msg) => {
                 if matches!(msg, SettingsMessage::Close) {
@@ -2558,34 +2531,6 @@ impl AppModel {
     #[allow(clippy::too_many_lines)]
     fn update_file_ops(&mut self, message: Message) -> Task<cosmic::Action<Message>> {
         match message {
-            Message::OpenFilePicker => {
-                return Task::perform(
-                    async {
-                        use cosmic::dialog::file_chooser::{self, FileFilter};
-
-                        let filter = FileFilter::new("Audio Files")
-                            .glob("*.mp3")
-                            .glob("*.flac")
-                            .glob("*.ogg")
-                            .glob("*.wav")
-                            .glob("*.m4a")
-                            .glob("*.aac");
-
-                        let result = file_chooser::open::Dialog::new()
-                            .title("Selecionar Música") // TODO: Use fl! macro
-                            .filter(filter)
-                            .open_file()
-                            .await;
-
-                        match result {
-                            Ok(response) => response.url().to_file_path().ok(),
-                            Err(_) => None,
-                        }
-                    },
-                    Message::FileSelected,
-                )
-                .map(cosmic::Action::App);
-            }
             Message::OpenFolderPicker => {
                 return Task::perform(
                     async {

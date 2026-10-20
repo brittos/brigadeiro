@@ -47,7 +47,6 @@ pub enum SettingsMessage {
 
     // Dialog actions
     Close,
-    Save,
     ResetAll,
 }
 
@@ -66,14 +65,6 @@ impl SettingsPage {
             SettingsPage::Library => fl!("settings-library"),
             SettingsPage::Interface => fl!("settings-interface"),
             SettingsPage::Playback => fl!("settings-playback"),
-        }
-    }
-
-    pub fn icon(&self) -> &'static str {
-        match self {
-            SettingsPage::Library => "folder-music-symbolic",
-            SettingsPage::Interface => "preferences-desktop-appearance-symbolic",
-            SettingsPage::Playback => "media-playback-start-symbolic",
         }
     }
 }

@@ -28,6 +28,7 @@ impl Database {
     }
 
     /// Open an in-memory database (mainly for testing)
+    #[cfg(test)]
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
         let db = Self {
@@ -917,28 +918,6 @@ impl Database {
             tracks.push(track?);
         }
         Ok(tracks)
-    }
-
-    /// Get cover art IDs for the first N tracks of a playlist (for collage)
-    pub fn get_playlist_cover_art_ids(&self, playlist_id: i64, limit: usize) -> Result<Vec<i64>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT DISTINCT t.cover_art_id
-             FROM Tracks t
-             JOIN Playlist_Entry_Track_Junction petj ON t.id = petj.track_id
-             JOIN Playlist_Entries pe ON petj.playlist_entry_id = pe.id
-             JOIN Playlist_Entry_Playlist_Junction pepj ON pe.id = pepj.playlist_entry_id
-             WHERE pepj.playlist_id = ? AND t.cover_art_id IS NOT NULL
-             ORDER BY pe.playlist_position ASC
-             LIMIT ?",
-        )?;
-
-        let ids = stmt
-            .query_map(params![playlist_id, limit], |row| row.get(0))?
-            .filter_map(Result::ok)
-            .collect();
-
-        Ok(ids)
     }
 }
 

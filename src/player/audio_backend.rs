@@ -19,7 +19,6 @@ use tokio::sync::mpsc;
 pub enum PlaybackState {
     #[default]
     Stopped,
-    Loading,
     Paused,
     Playing,
 }
@@ -129,9 +128,6 @@ impl AudioBackend {
             PlaybackState::Stopped => {
                 self.stop_internal();
             }
-            PlaybackState::Loading => {
-                self.state = state;
-            }
             PlaybackState::Paused => {
                 if let Some(ref sink) = self.sink {
                     sink.pause();
@@ -171,12 +167,6 @@ impl AudioBackend {
         self.duration = None;
         self.current_uri = None;
         self.state = PlaybackState::Stopped;
-    }
-
-    /// Get current state
-    #[must_use]
-    pub fn state(&self) -> PlaybackState {
-        self.state
     }
 
     /// Load and play a file
@@ -302,32 +292,6 @@ impl AudioBackend {
         }
     }
 
-    /// Get current volume
-    #[must_use]
-    pub fn volume(&self) -> f64 {
-        self.volume
-    }
-
-    /// Get current position in seconds
-    #[must_use]
-    pub fn position(&self) -> u64 {
-        let mut total_ms = self.current_position_ms;
-        if self.state == PlaybackState::Playing
-            && let Some(last_time) = self.last_play_time
-        {
-            #[allow(clippy::cast_possible_truncation)]
-            let elapsed = last_time.elapsed().as_millis() as u64; // Safe: reasonable elapsed time
-            total_ms += elapsed;
-        }
-        total_ms / 1000
-    }
-
-    /// Get duration in seconds
-    #[must_use]
-    pub fn duration(&self) -> Option<f64> {
-        self.duration
-    }
-
     /// Seek to position (in seconds)
     pub fn seek(&mut self, seconds: u64) {
         let pos = Duration::from_secs(seconds);
@@ -389,16 +353,6 @@ impl AudioBackend {
                 sink.pause();
                 self.last_play_time = None;
             }
-        }
-    }
-
-    /// Check if playback has finished (for EOS detection)
-    #[must_use]
-    pub fn is_finished(&self) -> bool {
-        if let Some(ref sink) = self.sink {
-            sink.empty() && self.state == PlaybackState::Playing
-        } else {
-            false
         }
     }
 
