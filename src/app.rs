@@ -281,6 +281,8 @@ pub enum Message {
     TogglePlaylistEditMode(bool),
     OpenPlaylistDetail(i64),
     PlayPlaylist(i64),
+    /// Play the playlist being viewed starting at a track index
+    PlayPlaylistFromTrack(i64, usize), // playlist_id, track_idx
     AddTrackToPlaylist(i64, i64),
     RemoveTrackFromPlaylist(i64, i64),
     PlaylistsScrolled(cosmic::iced::widget::scrollable::Viewport),
@@ -1189,7 +1191,8 @@ impl cosmic::Application for AppModel {
             Message::PlayAlbumFromTrack(_, _)
             | Message::PlayTrack(_)
             | Message::PlayArtistTracks(_)
-            | Message::PlayPlaylist(_) => self.update_play_actions(message),
+            | Message::PlayPlaylist(_)
+            | Message::PlayPlaylistFromTrack(_, _) => self.update_play_actions(message),
 
             // --- Settings & window management ---
             Message::WindowMinimize
@@ -2142,14 +2145,27 @@ impl AppModel {
                 }
             }
             Message::PlayPlaylist(id) => {
-                if let Some(_p) = self.library_playlists.iter().find(|p| p.id == id) {
+                return self.update_play_actions(Message::PlayPlaylistFromTrack(id, 0));
+            }
+            Message::PlayPlaylistFromTrack(playlist_id, track_idx) => {
+                println!("Telemetry: Play playlist {playlist_id} from track {track_idx}");
+                // `playlist_tracks` holds the tracks of the playlist (or Favorites)
+                // currently open, which is the only place this message comes from.
+                let is_open = match self.current_view {
+                    AppView::PlaylistDetail(id) => id == playlist_id,
+                    AppView::Favorites => {
+                        playlist_id == crate::model::playlist::FAVORITES_PLAYLIST_ID
+                    }
+                    _ => false,
+                };
+                if is_open && track_idx < self.playlist_tracks.len() {
                     self.queue_tracks.clear();
                     for t in &self.playlist_tracks {
                         self.queue_tracks.push(std::sync::Arc::new(t.clone()));
                     }
-                    self.queue_position = 0;
+                    self.queue_position = track_idx;
 
-                    if let Some(track) = self.playlist_tracks.first() {
+                    if let Some(track) = self.playlist_tracks.get(track_idx) {
                         self.player_state.current_track = Some(std::sync::Arc::new(track.clone()));
                         let path = track.uri.clone();
                         self.update_queue_metadata();
@@ -2157,6 +2173,7 @@ impl AppModel {
                         return Task::done(cosmic::Action::App(Message::FileSelected(Some(path))));
                     }
                 }
+                self.update_queue_metadata();
             }
             _ => {}
         }

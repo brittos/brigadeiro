@@ -21,7 +21,7 @@ fn view_playlist_header<'a>(playlist: &'a Playlist, edit_mode: bool) -> Element<
 
     // Header with title or input
     let title_widget: Element<Message> = if edit_mode {
-        widget::text_input("Título da Playlist", &playlist.title) // TODO: Use fl! macro
+        widget::text_input(fl!("playlist-title-placeholder"), &playlist.title)
             .on_input(|title| Message::RenamePlaylist(playlist.id, title))
             .width(Length::Fill)
             .into()
@@ -107,7 +107,10 @@ fn view_playlist_info<'a>(
     let duration_str = format!("{}:{:02}", duration_secs / 60, duration_secs % 60);
 
     let desc_widget: Element<Message> = if edit_mode {
-        widget::text_input("Descrição", playlist.description.as_deref().unwrap_or(""))
+        widget::text_input(
+            fl!("playlist-description-placeholder"),
+            playlist.description.as_deref().unwrap_or(""),
+        )
             .on_input(|desc| Message::UpdatePlaylistDescription(playlist.id, desc))
             .width(Length::Fill)
             .into()
@@ -115,17 +118,23 @@ fn view_playlist_info<'a>(
         widget::text::body(playlist.description.clone().unwrap_or_default()).into()
     };
 
-    let meta_text = format!("{track_count} músicas • {duration_str}");
+    let meta_text = fl!(
+        "playlist-stats",
+        count = track_count,
+        duration = duration_str
+    );
     let playlist_meta = widget::text::caption(meta_text);
 
     // Play buttons
-    let play_all_btn = widget::button::suggested("▶ Reproduzir")
+    let play_all_btn = widget::button::suggested(fl!("btn-play"))
+        .leading_icon(widget::icon::from_name("media-playback-start-symbolic"))
         .on_press(Message::PlayPlaylist(playlist.id))
         .class(crate::views::suggested_button_style(use_dark_text));
 
-    let delete_btn = if edit_mode {
+    let delete_btn = if edit_mode && !playlist.is_favorites() {
         Some(
-            widget::button::standard("🗑 Deletar")
+            widget::button::standard(fl!("delete-playlist"))
+                .leading_icon(widget::icon::from_name("user-trash-symbolic"))
                 .on_press(Message::DeletePlaylist(playlist.id))
                 .class(cosmic::theme::Button::Destructive),
         )
@@ -152,6 +161,7 @@ fn view_track_list<'a>(
     playlist: &'a Playlist,
     tracks: &'a [Track],
     current_track_path: Option<&'a str>,
+    edit_mode: bool,
     ctx: TrackActionsContext<'_>,
 ) -> Element<'a, Message> {
     if tracks.is_empty() && playlist.is_favorites() {
@@ -174,12 +184,25 @@ fn view_track_list<'a>(
             #[allow(clippy::cast_possible_truncation)]
             let track_number = (idx + 1) as u32; // Safe: idx is a small index
 
+            // Playlist positions are 1-based in the database and kept contiguous
+            let position = i64::try_from(idx + 1).unwrap_or(i64::MAX);
+            let remove_btn: Option<Element<'static, Message>> = edit_mode.then(|| {
+                widget::tooltip(
+                    widget::button::icon(widget::icon::from_name("user-trash-symbolic"))
+                        .on_press(Message::RemoveTrackFromPlaylist(playlist.id, position))
+                        .class(cosmic::theme::Button::Destructive),
+                    widget::text::body(fl!("remove-from-playlist")),
+                    widget::tooltip::Position::Top,
+                )
+                .into()
+            });
+
             track_entry::view(
                 track,
                 track_number,
                 is_current,
-                Message::PlayAlbumFromTrack(0, idx),
-                None,
+                Message::PlayPlaylistFromTrack(playlist.id, idx),
+                remove_btn,
                 ctx,
             )
         })
@@ -216,7 +239,7 @@ pub fn view<'a>(
         use_dark_text,
         edit_mode,
     );
-    let tracks_list = view_track_list(playlist, tracks, current_track_path, ctx);
+    let tracks_list = view_track_list(playlist, tracks, current_track_path, edit_mode, ctx);
 
     // Playlist header: cover + info side by side
     let playlist_header = widget::row::with_capacity(2)
