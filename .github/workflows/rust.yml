@@ -11,12 +11,24 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+
+    - uses: dtolnay/rust-toolchain@stable
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          pkg-config cmake g++ \
+          libclang-dev libssl-dev libdbus-1-dev \
+          libxkbcommon-dev libwayland-dev libvulkan-dev \
+          libasound2-dev libpipewire-0.3-dev libudev-dev
+
     - name: Build
       run: cargo build --verbose
+
     - name: Run tests
       run: cargo test --verbose
