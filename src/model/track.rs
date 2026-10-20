@@ -25,6 +25,7 @@ pub struct Track {
     #[allow(dead_code)] // preenchido pelo banco, a tela ainda não lê
     pub date: Option<String>,
     /// Track number within the disc
+    #[allow(clippy::struct_field_names)]
     pub track_number: Option<u32>,
     /// Disc number
     #[allow(dead_code)] // preenchido pelo banco, a tela ainda não lê

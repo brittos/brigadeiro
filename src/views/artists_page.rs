@@ -63,7 +63,7 @@ pub fn view(artists: &[ArtistData], use_dark_text: bool) -> Element<'static, Mes
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let spacing_u16 = SPACING as u16; // Safe: SPACING is a small constant
 
-    let content = widget::column().push(
+    let content = widget::Column::new().push(
         widget::flex_row(cards)
             .spacing(spacing_u16)
             .padding(PADDING)

@@ -211,7 +211,7 @@ pub fn view(
         .height(Length::Fill)
         .style(move |theme: &cosmic::Theme| {
             let cosmic = theme.cosmic();
-            let bg = cosmic.background.base;
+            let bg = cosmic.background(false).base;
             let _bg_color = cosmic::iced::Color::from_rgba(bg.red, bg.green, bg.blue, 1.0);
             let text_color = if use_dark_text {
                 cosmic::iced::Color::BLACK
@@ -276,7 +276,7 @@ fn view_row_cover(cover: Option<widget::image::Handle>) -> Element<'static, Mess
         .width(Length::Fixed(COVER_SIZE))
         .height(Length::Fixed(COVER_SIZE))
         .style(|theme: &cosmic::Theme| {
-            let bg = theme.cosmic().background.base;
+            let bg = theme.cosmic().background(false).base;
             cosmic::widget::container::Style {
                 background: Some(cosmic::iced::Background::Color(
                     cosmic::iced::Color::from_rgba(
@@ -426,7 +426,7 @@ fn queue_track_row(
             .width(Length::Fixed(20.0))
             .into()
     } else {
-        widget::horizontal_space().width(Length::Fixed(20.0)).into()
+        widget::space().width(Length::Fixed(20.0)).into()
     };
 
     let info_column = widget::column::with_capacity(2)
@@ -552,7 +552,7 @@ fn queue_track_button_style_normal() -> cosmic::theme::Button {
         }),
         hovered: Box::new(|_focused, theme| {
             let cosmic = theme.cosmic();
-            let bg = cosmic.background.base;
+            let bg = cosmic.background(false).base;
             cosmic::widget::button::Style {
                 background: Some(cosmic::iced::Background::Color(
                     cosmic::iced::Color::from_rgba(
@@ -568,7 +568,7 @@ fn queue_track_button_style_normal() -> cosmic::theme::Button {
         }),
         pressed: Box::new(|_focused, theme| {
             let cosmic = theme.cosmic();
-            let bg = cosmic.background.base;
+            let bg = cosmic.background(false).base;
             cosmic::widget::button::Style {
                 background: Some(cosmic::iced::Background::Color(
                     cosmic::iced::Color::from_rgba(

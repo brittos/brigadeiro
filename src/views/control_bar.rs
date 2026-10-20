@@ -129,7 +129,7 @@ fn view_track_info<'a>(
             .width(Length::Fixed(ART_SIZE))
             .height(Length::Fixed(ART_SIZE))
             .style(|theme: &cosmic::Theme| {
-                let bg = theme.cosmic().background.base;
+                let bg = theme.cosmic().background(false).base;
                 cosmic::widget::container::Style {
                     background: Some(cosmic::iced::Background::Color(
                         cosmic::iced::Color::from_rgba(
@@ -343,10 +343,10 @@ fn view_extra_controls(
     widget::row::with_capacity(6)
         .push(vol_ico)
         .push(volume_slider)
-        .push(widget::horizontal_space().width(Length::Fixed(12.0)))
+        .push(widget::space().width(Length::Fixed(12.0)))
         .push(loop_btn)
         .push(shuffle_btn)
-        .push(widget::horizontal_space().width(Length::Fixed(8.0)))
+        .push(widget::space().width(Length::Fixed(8.0)))
         .push(queue_btn)
         .spacing(4)
         .align_y(Alignment::Center)
@@ -357,6 +357,7 @@ fn view_extra_controls(
 /// Renders the control bar (persistent bottom bar)
 ///
 /// Layout: [Art + Info] | [Controls + Slider] | [Volume + Buttons + `GoToQueue`]
+#[allow(clippy::too_many_arguments)]
 pub fn view(
     current_track: Option<&Arc<Track>>,
     covers: &HashMap<i64, widget::image::Handle>,
@@ -370,7 +371,7 @@ pub fn view(
 ) -> Element<'static, Message> {
     // If no track, return empty bar
     let Some(track) = current_track else {
-        return widget::container(widget::Space::new(Length::Fill, Length::Fixed(0.0)))
+        return widget::container(widget::Space::new().width(Length::Fill).height(Length::Fixed(0.0)))
             .width(Length::Fill)
             .into();
     };
@@ -415,7 +416,7 @@ pub fn view(
         .height(Length::Fixed(BAR_HEIGHT))
         .style(move |theme: &cosmic::Theme| {
             let cosmic = theme.cosmic();
-            let bg = cosmic.background.base;
+            let bg = cosmic.background(false).base;
 
             let text_color = if use_dark_text {
                 cosmic::iced::Color::BLACK

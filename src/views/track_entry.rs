@@ -117,7 +117,7 @@ fn track_entry_style(is_current: bool, use_dark_text: bool) -> cosmic::theme::Bu
             }),
             hovered: Box::new(|_, theme| {
                 let cosmic = theme.cosmic();
-                let bg = cosmic.background.base;
+                let bg = cosmic.background(false).base;
                 cosmic::widget::button::Style {
                     background: Some(cosmic::iced::Background::Color(
                         cosmic::iced::Color::from_rgba(
@@ -133,7 +133,7 @@ fn track_entry_style(is_current: bool, use_dark_text: bool) -> cosmic::theme::Bu
             }),
             pressed: Box::new(|_, theme| {
                 let cosmic = theme.cosmic();
-                let bg = cosmic.background.base;
+                let bg = cosmic.background(false).base;
                 cosmic::widget::button::Style {
                     background: Some(cosmic::iced::Background::Color(
                         cosmic::iced::Color::from_rgba(

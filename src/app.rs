@@ -22,6 +22,7 @@ use crate::views::tracks_page;
 use cosmic::cosmic_config::{self, CosmicConfigEntry};
 use cosmic::iced::alignment::{Horizontal, Vertical};
 use cosmic::iced::futures::SinkExt;
+use futures_util::StreamExt;
 use cosmic::iced::{Length, Subscription, time, window};
 use cosmic::prelude::*;
 use cosmic::widget::{self};
@@ -80,8 +81,103 @@ fn should_use_dark_text(color: cosmic::iced::Color) -> bool {
     luminance(color) > 0.4 // Threshold: if brighter than 40%, use dark text
 }
 
+/// Dark theme tinted by an album color. `background` and `primary` are private, so the
+/// translucent layers go through `ThemeBuilder`. `accent` stays public.
+fn tinted_theme(color: cosmic::iced::Color) -> cosmic::cosmic_theme::Theme {
+    let rgb = cosmic::cosmic_theme::palette::rgb::Rgb::from(color);
+    let alpha_color = cosmic::cosmic_theme::palette::Alpha {
+        color: rgb,
+        alpha: 0.2,
+    };
+    let mut theme = cosmic::cosmic_theme::ThemeBuilder::dark()
+        .bg_color(alpha_color)
+        .primary_container_bg(alpha_color)
+        .accent(rgb)
+        .build();
+    theme.frosted_windows = true;
+    theme.accent.base = alpha_color;
+    theme
+}
+
+/// Subscription identity for playback events. Only the id is hashed; the receiver is not `Hash`.
+#[derive(Clone)]
+struct AudioEventSub {
+    rx: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<PlaybackEvent>>>,
+}
+
+impl PartialEq for AudioEventSub {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for AudioEventSub {}
+
+impl std::hash::Hash for AudioEventSub {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        "audio-events".hash(state);
+    }
+}
+
+fn audio_event_stream(sub: &AudioEventSub) -> futures_util::stream::BoxStream<'static, Message> {
+    let event_rx = sub.rx.clone();
+    cosmic::iced::stream::channel(10, async move |mut output| {
+        let mut rx = event_rx.lock().await;
+        while let Some(event) = rx.recv().await {
+            let msg = match event {
+                PlaybackEvent::Tick(secs) => Message::PlaybackTick(secs),
+                PlaybackEvent::Duration(secs) => {
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    let duration = secs.max(0.0) as u64; // Safe: duration is non-negative
+                    Message::PlaybackDuration(duration)
+                }
+                PlaybackEvent::StateChanged(state) => Message::PlaybackStateChanged(state),
+                PlaybackEvent::EndOfStream => Message::PlaybackEnded,
+                PlaybackEvent::Error(e) => {
+                    println!("Playback error: {e}");
+                    Message::NoOp
+                }
+            };
+            let _ = output.send(msg).await;
+        }
+    })
+    .boxed()
+}
+
+/// Subscription identity for MPRIS commands. Only the id is hashed; the receiver is not `Hash`.
+#[derive(Clone)]
+struct MprisEventSub {
+    rx: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<MprisAction>>>,
+}
+
+impl PartialEq for MprisEventSub {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for MprisEventSub {}
+
+impl std::hash::Hash for MprisEventSub {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        "mpris-events".hash(state);
+    }
+}
+
+fn mpris_event_stream(sub: &MprisEventSub) -> futures_util::stream::BoxStream<'static, Message> {
+    let mpris_rx = sub.rx.clone();
+    cosmic::iced::stream::channel(10, async move |mut output| {
+        let mut rx = mpris_rx.lock().await;
+        while let Some(action) = rx.recv().await {
+            let _ = output.send(Message::MprisCommand(action)).await;
+        }
+    })
+    .boxed()
+}
+
 /// The application model stores app-specific state used to describe its interface and
 /// drive its logic.
+#[allow(clippy::struct_excessive_bools)]
 pub struct AppModel {
     /// Application state which is managed by the COSMIC runtime.
     core: cosmic::Core,
@@ -179,7 +275,7 @@ pub struct AppModel {
 pub enum Message {
     UpdateConfig(Config),
     LoadMusic,
-    MusicLoaded(Option<crate::utils::metadata::AudioMetadata>),
+    MusicLoaded(Option<Box<crate::utils::metadata::AudioMetadata>>),
     // File/Folder picker
     FileSelected(Option<std::path::PathBuf>),
     OpenFolderPicker,
@@ -529,6 +625,7 @@ impl cosmic::Application for AppModel {
     }
 
     /// Initializes the application with any given flags and startup commands.
+    #[allow(clippy::too_many_lines)]
     fn init(
         mut core: cosmic::Core,
         _flags: Self::Flags,
@@ -549,7 +646,7 @@ impl cosmic::Application for AppModel {
         let mut background_image_dims = None;
 
         if let Some(img) = default_cover_img {
-            let (processed_img, colors) = crate::utils::metadata::process_image_for_theme(img);
+            let (processed_img, colors) = crate::utils::metadata::process_image_for_theme(&img);
             if let Some(c) = colors.0 {
                 theme_color = Some(c);
             }
@@ -646,16 +743,7 @@ impl cosmic::Application for AppModel {
         app.mpris_tx = Some(mpris_state_tx);
 
         // Initialize with default theme
-        let mut theme = cosmic::cosmic_theme::Theme::dark_default();
-        let rgb = cosmic::cosmic_theme::palette::rgb::Rgb::from(theme_color_for_init);
-        let alpha_color = cosmic::cosmic_theme::palette::Alpha {
-            color: rgb,
-            alpha: 0.2,
-        };
-        theme.is_frosted = true;
-        theme.primary.base = alpha_color;
-        theme.background.base = alpha_color;
-        theme.accent.base = alpha_color;
+        let theme = tinted_theme(theme_color_for_init);
         let app_theme = cosmic::Theme::custom(std::sync::Arc::new(theme));
         let theme_task = Task::done(cosmic::Action::Cosmic(cosmic::app::Action::AppThemeChange(
             app_theme,
@@ -701,6 +789,7 @@ impl cosmic::Application for AppModel {
     ///
     /// Application events will be processed through the view. Any messages emitted by
     /// events received by widgets will be passed to the update method.
+    #[allow(clippy::too_many_lines)]
     fn view(&self) -> Element<'_, Self::Message> {
         // Adaptive text color based on background luminance
         let text_color = if self.use_dark_text {
@@ -750,7 +839,7 @@ impl cosmic::Application for AppModel {
         // Create the drag area (Bottom Layer)
         // We use MouseArea because standard Buttons trigger on release, but dragging requires press.
         let drag_button = cosmic::widget::MouseArea::new(
-            widget::horizontal_space().width(Length::Fill).height(40),
+            widget::space().width(Length::Fill).height(40),
         )
         .on_press(Message::WindowDrag)
         .on_double_click(Message::WindowMaximize);
@@ -859,14 +948,6 @@ impl cosmic::Application for AppModel {
                                 widget::text::body(fl!("album-not-found")).into()
                             }
                         }
-                        AppView::Grid => albums_page::view(
-                            &self.library_albums,
-                            &self.covers_cache,
-                            self.albums_scroll_y,
-                            self.albums_viewport_h,
-                            self.albums_viewport_w,
-                            self.use_dark_text,
-                        ),
                         _ => albums_page::view(
                             &self.library_albums,
                             &self.covers_cache,
@@ -991,7 +1072,7 @@ impl cosmic::Application for AppModel {
             .clip(true);
 
         // Create main column with header and content
-        let main_column = widget::column().push(header).push(content_container);
+        let main_column = widget::Column::new().push(header).push(content_container);
 
         // Show queue sidebar when on Queue page OR when explicitly toggled visible
         let show_sidebar = self.current_page == NavPage::Queue || self.queue_visible;
@@ -1005,7 +1086,7 @@ impl cosmic::Application for AppModel {
             );
 
             // Queue sidebar on LEFT
-            widget::row()
+            widget::Row::new()
                 .push(queue_sidebar)
                 .push(main_column.width(Length::Fill))
                 .width(Length::Fill)
@@ -1059,7 +1140,7 @@ impl cosmic::Application for AppModel {
                 settings_dialog::view(&self.config, self.settings_page).map(Message::Settings);
 
             // Semi-transparent dark backdrop overlay to dim the background
-            let backdrop = widget::container(widget::Space::new(Length::Fill, Length::Fill)).class(
+            let backdrop = widget::container(widget::Space::new().width(Length::Fill).height(Length::Fill)).class(
                 cosmic::style::Container::custom(|_theme| cosmic::widget::container::Style {
                     background: Some(cosmic::iced::Background::Color(
                         cosmic::iced::Color::from_rgba(0.0, 0.0, 0.0, 0.6),
@@ -1071,7 +1152,7 @@ impl cosmic::Application for AppModel {
             // Dialog with solid opaque COSMIC native background
             let dialog_box = widget::container(settings_content)
                 .padding(0)
-                .class(cosmic::style::Container::Dialog);
+                .class(cosmic::style::Container::Dialog(true));
 
             // Center the settings dialog
             let dialog_container = widget::container(dialog_box)
@@ -1251,33 +1332,12 @@ impl cosmic::Application for AppModel {
 impl AppModel {
     fn audio_subscription(&self) -> Subscription<Message> {
         if let Some(ref event_rx) = self.event_rx {
-            let event_rx = event_rx.clone();
-            let stream = cosmic::iced::stream::channel(10, move |mut output| {
-                let event_rx = event_rx.clone();
-                async move {
-                    let mut rx = event_rx.lock().await;
-                    while let Some(event) = rx.recv().await {
-                        let msg = match event {
-                            PlaybackEvent::Tick(secs) => Message::PlaybackTick(secs),
-                            PlaybackEvent::Duration(secs) => {
-                                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                                let duration = secs.max(0.0) as u64; // Safe: duration is non-negative
-                                Message::PlaybackDuration(duration)
-                            }
-                            PlaybackEvent::StateChanged(state) => {
-                                Message::PlaybackStateChanged(state)
-                            }
-                            PlaybackEvent::EndOfStream => Message::PlaybackEnded,
-                            PlaybackEvent::Error(e) => {
-                                println!("Playback error: {e}");
-                                Message::NoOp
-                            }
-                        };
-                        let _ = output.send(msg).await;
-                    }
-                }
-            });
-            Subscription::run_with_id("audio-events", stream)
+            Subscription::run_with(
+                AudioEventSub {
+                    rx: event_rx.clone(),
+                },
+                audio_event_stream,
+            )
         } else {
             Subscription::none()
         }
@@ -1286,14 +1346,12 @@ impl AppModel {
     /// Subscription for MPRIS D-Bus actions (play, pause, next, etc. from external controllers)
     fn mpris_subscription(&self) -> Subscription<Message> {
         if let Some(ref mpris_rx) = self.mpris_rx {
-            let mpris_rx = mpris_rx.clone();
-            let stream = cosmic::iced::stream::channel(10, move |mut output| async move {
-                let mut rx = mpris_rx.lock().await;
-                while let Some(action) = rx.recv().await {
-                    let _ = output.send(Message::MprisCommand(action)).await;
-                }
-            });
-            Subscription::run_with_id("mpris-events", stream)
+            Subscription::run_with(
+                MprisEventSub {
+                    rx: mpris_rx.clone(),
+                },
+                mpris_event_stream,
+            )
         } else {
             Subscription::none()
         }
@@ -1461,6 +1519,7 @@ impl AppModel {
 
     /// Handle playback control messages
     #[allow(clippy::too_many_lines)]
+    #[allow(clippy::needless_pass_by_value)]
     fn update_playback(&mut self, message: Message) -> Task<cosmic::Action<Message>> {
         match message {
             Message::Play => {
@@ -1538,7 +1597,7 @@ impl AppModel {
                     // Loop current song - do nothing to position, just reload
                 } else if self.player_state.shuffle && !self.queue_tracks.is_empty() {
                     // Random next track
-                    use rand::Rng;
+                    use rand::RngExt;
                     let mut rng = rand::rng();
                     if self.queue_tracks.len() > 1 {
                         let current_pos = self.queue_position;
@@ -1583,8 +1642,10 @@ impl AppModel {
                     new_track.duration = duration;
                     self.player_state.current_track = Some(Arc::new(new_track));
                 } else {
-                    let mut track = Track::default();
-                    track.duration = duration;
+                    let track = Track {
+                        duration,
+                        ..Track::default()
+                    };
                     self.player_state.current_track = Some(Arc::new(track));
                 }
             }
@@ -1645,6 +1706,7 @@ impl AppModel {
     }
 
     /// Handle queue management messages
+    #[allow(clippy::needless_pass_by_value)]
     fn update_queue(&mut self, message: Message) -> Task<cosmic::Action<Message>> {
         match message {
             Message::ToggleQueue => {
@@ -1723,7 +1785,7 @@ impl AppModel {
                         .await
                         .unwrap_or(None)
                     },
-                    Message::MusicLoaded,
+                    |metadata| Message::MusicLoaded(metadata.map(Box::new)),
                 )
                 .map(cosmic::Action::App);
             }
@@ -1762,7 +1824,7 @@ impl AppModel {
                                 println!("Telemetry: Track saved to database with ID: {id}");
                             }
                             Err(e) => {
-                                eprintln!("Telemetry Error: Failed to save track to database: {e}")
+                                eprintln!("Telemetry Error: Failed to save track to database: {e}");
                             }
                         }
                     }
@@ -1786,18 +1848,7 @@ impl AppModel {
                     }
 
                     if let Some(color) = self.theme_color {
-                        let mut theme = cosmic::cosmic_theme::Theme::dark_default();
-                        let rgb = cosmic::cosmic_theme::palette::rgb::Rgb::from(color);
-                        let alpha_color = cosmic::cosmic_theme::palette::Alpha {
-                            color: rgb,
-                            alpha: 0.2,
-                        };
-
-                        theme.is_frosted = true;
-                        theme.primary.base = alpha_color;
-                        theme.background.base = alpha_color;
-                        theme.accent.base = alpha_color;
-
+                        let theme = tinted_theme(color);
                         let app_theme = cosmic::Theme::custom(std::sync::Arc::new(theme));
 
                         return Task::done(cosmic::Action::Cosmic(
@@ -2004,6 +2055,7 @@ impl AppModel {
     }
 
     /// Handle navigation messages
+    #[allow(clippy::needless_pass_by_value)]
     fn update_navigation(&mut self, message: Message) -> Task<cosmic::Action<Message>> {
         match message {
             Message::NavTo(page) => {
@@ -2068,6 +2120,7 @@ impl AppModel {
     }
 
     /// Handle play actions (tracks, albums, artists, playlists)
+    #[allow(clippy::needless_pass_by_value)]
     fn update_play_actions(&mut self, message: Message) -> Task<cosmic::Action<Message>> {
         match message {
             Message::PlayAlbumFromTrack(album_idx, track_idx) => {
@@ -2345,7 +2398,7 @@ impl AppModel {
                     async move {
                         if let Some(db) = db {
                             let _ = tokio::task::spawn_blocking(move || {
-                                db.create_playlist(title, None)
+                                db.create_playlist(&title, None)
                             })
                             .await;
                         }
@@ -2387,7 +2440,7 @@ impl AppModel {
                     async move {
                         if let Some(db) = db {
                             let _ = tokio::task::spawn_blocking(move || {
-                                db.update_playlist_metadata(id, title, p_desc)
+                                db.update_playlist_metadata(id, &title, p_desc)
                             })
                             .await;
                         }
@@ -2411,7 +2464,7 @@ impl AppModel {
                     async move {
                         if let Some(db) = db {
                             let _ = tokio::task::spawn_blocking(move || {
-                                db.update_playlist_metadata(id, p_title, Some(desc))
+                                db.update_playlist_metadata(id, &p_title, Some(desc))
                             })
                             .await;
                         }
@@ -2477,7 +2530,7 @@ impl AppModel {
                     async move {
                         let db = db?;
                         tokio::task::spawn_blocking(move || {
-                            let playlist_id = db.create_playlist(title, None).ok()?;
+                            let playlist_id = db.create_playlist(&title, None).ok()?;
                             let _ = db.add_track_to_playlist(playlist_id, track_id);
                             Some(playlist_id)
                         })
@@ -2572,7 +2625,7 @@ impl AppModel {
                     return Task::perform(
                         async move {
                             let files = crate::utils::metadata::scan_directory(&path);
-                            println!("Telemetry: Found {} audio files in {:?}", files.len(), path);
+                            println!("Telemetry: Found {} audio files in {}", files.len(), path.display());
 
                             if let Some(db) = db_clone {
                                 let mut batch = Vec::new();
@@ -2657,7 +2710,7 @@ impl AppModel {
                             .await
                             .unwrap_or(None)
                         },
-                        Message::MusicLoaded,
+                        |metadata| Message::MusicLoaded(metadata.map(Box::new)),
                     )
                     .map(cosmic::Action::App);
                 }

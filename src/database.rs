@@ -5,7 +5,7 @@
 use chrono::Utc;
 pub use cosmic::iced::Color;
 use rusqlite::{Connection, OptionalExtension, Result, params};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 /// Database manager for the application
@@ -39,6 +39,7 @@ impl Database {
     }
 
     /// Create all necessary tables if they don't exist
+    #[allow(clippy::too_many_lines)]
     fn setup_db_tables(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
 
@@ -382,7 +383,7 @@ impl Database {
     /// Save full track metadata to the database
     pub fn save_track_metadata(
         &self,
-        path: &PathBuf,
+        path: &Path,
         metadata: &crate::utils::metadata::AudioMetadata,
     ) -> Result<i64> {
         let mut conn = self.conn.lock().unwrap();
@@ -408,9 +409,10 @@ impl Database {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     fn save_track_metadata_inner(
         conn: &rusqlite::Connection,
-        path: &PathBuf,
+        path: &Path,
         metadata: &crate::utils::metadata::AudioMetadata,
     ) -> Result<i64> {
         let file_uri = path.to_string_lossy().to_string();
@@ -692,7 +694,7 @@ impl Database {
     // --- Playlist Management ---
 
     /// Create a new playlist
-    pub fn create_playlist(&self, title: String, description: Option<String>) -> Result<i64> {
+    pub fn create_playlist(&self, title: &str, description: Option<String>) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
         let now = Utc::now();
         conn.execute(
@@ -743,7 +745,7 @@ impl Database {
     pub fn update_playlist_metadata(
         &self,
         playlist_id: i64,
-        title: String,
+        title: &str,
         description: Option<String>,
     ) -> Result<()> {
         let conn = self.conn.lock().unwrap();
@@ -996,7 +998,7 @@ mod tests {
         let a = insert_track(&db, "a");
         let b = insert_track(&db, "b");
         let c = insert_track(&db, "c");
-        let playlist = db.create_playlist("Mix".to_string(), None).unwrap();
+        let playlist = db.create_playlist("Mix", None).unwrap();
 
         // Empty playlist reports zero tracks
         let playlists = db.get_all_playlists().unwrap();
@@ -1046,7 +1048,7 @@ mod tests {
     fn same_track_can_appear_twice_in_a_playlist() {
         let db = Database::open_in_memory().unwrap();
         let a = insert_track(&db, "a");
-        let playlist = db.create_playlist("Mix".to_string(), None).unwrap();
+        let playlist = db.create_playlist("Mix", None).unwrap();
 
         db.add_track_to_playlist(playlist, a).unwrap();
         db.add_track_to_playlist(playlist, a).unwrap();
@@ -1058,7 +1060,7 @@ mod tests {
     fn playlist_tracks_carry_the_favorite_flag() {
         let db = Database::open_in_memory().unwrap();
         let a = insert_track(&db, "a");
-        let playlist = db.create_playlist("Mix".to_string(), None).unwrap();
+        let playlist = db.create_playlist("Mix", None).unwrap();
         db.add_track_to_playlist(playlist, a).unwrap();
         db.set_track_favorite(a, true).unwrap();
 

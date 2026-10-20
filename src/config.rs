@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
+#![allow(clippy::float_cmp)]
 
 //! Configuration module for Brigadeiro
 //!
@@ -50,6 +51,7 @@ pub enum TrackSort {
 ///
 /// All fields are automatically persisted to disk via `cosmic_config`.
 /// Changes trigger UI updates through the subscription system.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, CosmicConfigEntry, PartialEq, Serialize, Deserialize)]
 #[version = 1]
 pub struct Config {

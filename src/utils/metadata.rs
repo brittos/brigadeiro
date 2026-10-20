@@ -40,7 +40,7 @@ pub fn extract_metadata<P: AsRef<Path>>(path: P) -> Option<AudioMetadata> {
 
     // Process cover for background: Blur and Darken
     let cover = cover.map(|img| {
-        let (processed, colors) = process_image_for_theme(img);
+        let (processed, colors) = process_image_for_theme(&img);
         (processed, colors)
     });
 
@@ -131,10 +131,10 @@ pub fn extract_metadata_fast<P: AsRef<Path>>(path: P) -> Option<AudioMetadata> {
     Some(metadata)
 }
 
+type ThemeColors = (Option<Color>, Option<Color>, Option<Color>);
+
 /// Helper to process an image for the application theme (blur + color extraction)
-pub fn process_image_for_theme(
-    img: DynamicImage,
-) -> (DynamicImage, (Option<Color>, Option<Color>, Option<Color>)) {
+pub fn process_image_for_theme(img: &DynamicImage) -> (DynamicImage, ThemeColors) {
     // 1. Resize first (used for both background blur AND color extraction)
     // Downscaling to 150x150 is enough for dominant colors and blur
     let resized = img.resize(150, 150, image::imageops::FilterType::Triangle); // resize image to 150x150

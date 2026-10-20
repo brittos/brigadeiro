@@ -33,8 +33,8 @@ pub fn view(
     // Header with "New Playlist" button
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let header_padding = PADDING as u16; // Safe: PADDING is a small constant
-    let header = widget::row()
-        .push(widget::horizontal_space().width(Length::Fill))
+    let header = widget::Row::new()
+        .push(widget::space().width(Length::Fill))
         .push(
             widget::button::text(fl!("new-playlist"))
                 .on_press(Message::CreatePlaylist(fl!("new-playlist")))
@@ -93,8 +93,8 @@ pub fn view(
     // Build layout with spacers
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let spacing_u16 = SPACING as u16; // Safe: SPACING is a small constant
-    let grid_content = widget::column()
-        .push(widget::vertical_space().height(Length::Fixed(top_height)))
+    let grid_content = widget::Column::new()
+        .push(widget::space().height(Length::Fixed(top_height)))
         .push(
             widget::flex_row(cards)
                 .spacing(spacing_u16)
@@ -103,9 +103,9 @@ pub fn view(
                 .align_items(Alignment::Start)
                 .justify_content(cosmic::widget::JustifyContent::Center),
         )
-        .push(widget::vertical_space().height(Length::Fixed(bottom_height)));
+        .push(widget::space().height(Length::Fixed(bottom_height)));
 
-    let mut content = widget::column().push(header).push(grid_content);
+    let mut content = widget::Column::new().push(header).push(grid_content);
 
     if playlists.is_empty() {
         content = content.push(
@@ -250,7 +250,7 @@ fn card(
     .height(Length::Fixed(16.0))
     .clip(true);
 
-    let content = widget::column()
+    let content = widget::Column::new()
         .push(cover_widget)
         .push(title_widget)
         .push(desc_widget)
@@ -261,7 +261,7 @@ fn card(
         widget::container(content)
             .padding(10)
             .style(|theme: &cosmic::Theme| {
-                let bg = theme.cosmic().background.base;
+                let bg = theme.cosmic().background(false).base;
                 let lighter_color = cosmic::iced::Color::from_rgba(
                     (bg.red + 0.1).min(1.0),
                     (bg.green + 0.1).min(1.0),

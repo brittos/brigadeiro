@@ -13,7 +13,7 @@ use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
 use std::collections::HashMap;
 
-fn view_playlist_header<'a>(playlist: &'a Playlist, edit_mode: bool) -> Element<'a, Message> {
+fn view_playlist_header(playlist: &Playlist, edit_mode: bool) -> Element<'_, Message> {
     // Back button
     let back_button = widget::button::icon(widget::icon::from_name("go-previous-symbolic"))
         .on_press(Message::NavTo(crate::app::NavPage::Playlists))
@@ -32,7 +32,7 @@ fn view_playlist_header<'a>(playlist: &'a Playlist, edit_mode: bool) -> Element<
     let mut header = widget::row::with_capacity(4)
         .push(back_button)
         .push(title_widget)
-        .push(widget::horizontal_space().width(Length::Fill));
+        .push(widget::space().width(Length::Fill));
 
     // The Favorites collection is not editable
     if !playlist.is_favorites() {
@@ -97,13 +97,13 @@ fn view_playlist_cover<'a>(
     }
 }
 
-fn view_playlist_info<'a>(
-    playlist: &'a Playlist,
+fn view_playlist_info(
+    playlist: &Playlist,
     track_count: usize,
     duration_secs: u64,
     use_dark_text: bool,
     edit_mode: bool,
-) -> Element<'a, Message> {
+) -> Element<'_, Message> {
     let duration_str = format!("{}:{:02}", duration_secs / 60, duration_secs % 60);
 
     let desc_widget: Element<Message> = if edit_mode {
@@ -142,7 +142,7 @@ fn view_playlist_info<'a>(
         None
     };
 
-    let mut buttons_row = widget::row().push(play_all_btn).spacing(8);
+    let mut buttons_row = widget::Row::new().push(play_all_btn).spacing(8);
     if let Some(btn) = delete_btn {
         buttons_row = buttons_row.push(btn);
     }
@@ -150,7 +150,7 @@ fn view_playlist_info<'a>(
     widget::column::with_capacity(5)
         .push(desc_widget)
         .push(playlist_meta)
-        .push(widget::vertical_space().height(Length::Fixed(16.0)))
+        .push(widget::space().height(Length::Fixed(16.0)))
         .push(buttons_row)
         .spacing(8)
         .width(Length::Fill)
@@ -253,7 +253,7 @@ pub fn view<'a>(
         .push(header)
         .push(widget::divider::horizontal::default())
         .push(playlist_header)
-        .push(widget::vertical_space().height(Length::Fixed(16.0)))
+        .push(widget::space().height(Length::Fixed(16.0)))
         .push(tracks_list);
 
     let styled_content = widget::container(content)

@@ -84,7 +84,7 @@ pub fn view<'a>(
             } else {
                 // Placeholder for off-screen items to maintain scroll height
                 track_rows.push(
-                    widget::column()
+                    widget::Column::new()
                         .width(Length::Fill)
                         .height(Length::Fixed(row_height))
                         .into(),
@@ -179,7 +179,7 @@ fn track_row(
         .width(Length::Fixed(COVER_SIZE))
         .height(Length::Fixed(COVER_SIZE))
         .style(|theme: &cosmic::Theme| {
-            let bg = theme.cosmic().background.base;
+            let bg = theme.cosmic().background(false).base;
             cosmic::widget::container::Style {
                 background: Some(cosmic::iced::Background::Color(
                     cosmic::iced::Color::from_rgba(
@@ -304,7 +304,7 @@ fn track_button_style(is_current: bool, use_dark_text: bool) -> cosmic::theme::B
                 ..Default::default()
             }),
             hovered: Box::new(|_, theme| {
-                let bg = theme.cosmic().background.base;
+                let bg = theme.cosmic().background(false).base;
                 cosmic::widget::button::Style {
                     background: Some(cosmic::iced::Background::Color(
                         cosmic::iced::Color::from_rgba(
@@ -319,7 +319,7 @@ fn track_button_style(is_current: bool, use_dark_text: bool) -> cosmic::theme::B
                 }
             }),
             pressed: Box::new(|_, theme| {
-                let bg = theme.cosmic().background.base;
+                let bg = theme.cosmic().background(false).base;
                 cosmic::widget::button::Style {
                     background: Some(cosmic::iced::Background::Color(
                         cosmic::iced::Color::from_rgba(

@@ -69,7 +69,6 @@ pub fn view(
     // Calculate row dimensions
     let row_height = CARD_HEIGHT + SPACING;
     let total_rows = albums.len().div_ceil(cols);
-    let _total_height = total_rows as f32 * row_height + PADDING * 2.0;
 
     // Calculate visible row range
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -84,8 +83,10 @@ pub fn view(
     let last_idx = (last_row * cols).min(albums.len());
 
     // Calculate spacer heights
+    #[allow(clippy::cast_precision_loss)]
     let top_height = (first_row as f32 * row_height).max(0.0);
     let bottom_rows = total_rows.saturating_sub(last_row);
+    #[allow(clippy::cast_precision_loss)]
     let bottom_height = (bottom_rows as f32 * row_height).max(0.0);
 
     // Build only visible album cards
@@ -109,8 +110,8 @@ pub fn view(
     // Build layout with spacers
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let spacing_u16 = SPACING as u16; // Safe: SPACING is a small constant
-    let content = widget::column()
-        .push(widget::vertical_space().height(Length::Fixed(top_height)))
+    let content = widget::Column::new()
+        .push(widget::space().height(Length::Fixed(top_height)))
         .push(
             widget::flex_row(cards)
                 .spacing(spacing_u16)
@@ -119,7 +120,7 @@ pub fn view(
                 .align_items(Alignment::Start)
                 .justify_content(cosmic::widget::JustifyContent::Center),
         )
-        .push(widget::vertical_space().height(Length::Fixed(bottom_height)));
+        .push(widget::space().height(Length::Fixed(bottom_height)));
 
     widget::scrollable(content)
         .on_scroll(Message::AlbumsScrolled)
@@ -158,8 +159,8 @@ fn album_card(
         .clip(true)
         .into()
     } else {
-        widget::column()
-            .push(widget::vertical_space().height(Length::Fixed(19.0))) // Espaço em cima
+        widget::Column::new()
+            .push(widget::space().height(Length::Fixed(19.0))) // Espaço em cima
             .push(
                 widget::container(
                     widget::text::title1("🎵")
@@ -207,7 +208,7 @@ fn album_card(
     .height(Length::Fixed(16.0)) // Fixed height for single line
     .clip(true); // Clip overflowing text
 
-    let content = widget::column()
+    let content = widget::Column::new()
         .push(cover_widget)
         .push(title_widget)
         .push(artist_widget)
@@ -219,7 +220,7 @@ fn album_card(
             .padding(10)
             .style(|theme: &cosmic::Theme| {
                 // Get base background color from theme
-                let bg = theme.cosmic().background.base;
+                let bg = theme.cosmic().background(false).base;
 
                 // Make 10% lighter and 10% transparent
                 let lighter_color = cosmic::iced::Color::from_rgba(

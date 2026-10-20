@@ -23,6 +23,7 @@ use std::collections::HashMap;
 /// - Scrollable list of tracks
 ///
 /// `source_artist` - If Some, navigating back returns to artist detail instead of albums grid
+#[allow(clippy::too_many_lines)]
 pub fn view(
     album_idx: usize,
     album: &AlbumData,
@@ -107,7 +108,7 @@ pub fn view(
         .push(album_title)
         .push(album_artist)
         .push(album_meta)
-        .push(widget::vertical_space().height(Length::Fixed(16.0)))
+        .push(widget::space().height(Length::Fixed(16.0)))
         .push(buttons_row)
         .spacing(8);
 
@@ -149,7 +150,7 @@ pub fn view(
         .push(header)
         .push(widget::divider::horizontal::default())
         .push(album_header)
-        .push(widget::vertical_space().height(Length::Fixed(16.0)))
+        .push(widget::space().height(Length::Fixed(16.0)))
         .push(tracks_list);
 
     let styled_content = widget::container(content)
