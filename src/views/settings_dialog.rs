@@ -60,7 +60,7 @@ pub enum SettingsPage {
 }
 
 impl SettingsPage {
-    pub fn label(&self) -> String {
+    pub fn label(self) -> String {
         match self {
             SettingsPage::Library => fl!("settings-library"),
             SettingsPage::Interface => fl!("settings-interface"),
@@ -373,9 +373,9 @@ fn page_tabs(current: SettingsPage) -> Element<'static, SettingsMessage> {
         .align_y(cosmic::iced::Alignment::Center);
 
     widget::row::with_capacity(3)
-        .push(widget::horizontal_space().width(Length::Fill))
+        .push(widget::space().width(Length::Fill))
         .push(tabs_row)
-        .push(widget::horizontal_space().width(Length::Fill))
+        .push(widget::space().width(Length::Fill))
         .padding([8, 16])
         .width(Length::Fill)
         .into()
@@ -392,14 +392,14 @@ pub fn view(config: &Config, current_page: SettingsPage) -> Element<'static, Set
     // Header with title
     let header = widget::row::with_capacity(3)
         .push(widget::text::title3(fl!("settings-title")).width(Length::Fill))
-        .push(widget::horizontal_space().width(Length::Fill))
+        .push(widget::space().width(Length::Fill))
         .padding(16)
         .align_y(cosmic::iced::Alignment::Center);
 
     // Footer with actions
     let footer = widget::row::with_capacity(3)
         .push(widget::button::destructive(fl!("btn-reset")).on_press(SettingsMessage::ResetAll))
-        .push(widget::horizontal_space().width(Length::Fill))
+        .push(widget::space().width(Length::Fill))
         .push(widget::button::standard(fl!("btn-close")).on_press(SettingsMessage::Close))
         .padding(16)
         .spacing(8);

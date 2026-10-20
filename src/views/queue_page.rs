@@ -121,7 +121,7 @@ fn view_track_info<'a>(
             .width(Length::Fixed(ART_SIZE))
             .height(Length::Fixed(ART_SIZE))
             .style(|theme: &cosmic::Theme| {
-                let bg = theme.cosmic().background.base;
+                let bg = theme.cosmic().background(false).base;
                 cosmic::widget::container::Style {
                     background: Some(cosmic::iced::Background::Color(
                         cosmic::iced::Color::from_rgba(
@@ -160,7 +160,7 @@ fn view_track_info<'a>(
 
     widget::column::with_capacity(3)
         .push(cover_widget)
-        .push(widget::vertical_space().height(Length::Fixed(20.0)))
+        .push(widget::space().height(Length::Fixed(20.0)))
         .push(info_column)
         .align_x(cosmic::iced::alignment::Horizontal::Center)
         .into()
@@ -199,7 +199,7 @@ fn view_playback_timeline(
 
     let time_display = widget::row::with_capacity(2)
         .push(widget::text::caption(format_duration(current_position)))
-        .push(widget::horizontal_space().width(Length::Fill))
+        .push(widget::space().width(Length::Fill))
         .push(widget::text::caption(format_duration(duration)))
         .width(Length::Fixed(400.0));
 
@@ -278,7 +278,7 @@ fn view_playback_controls_and_options(
 
     let options_row = widget::row::with_capacity(4)
         .push(sidebar_btn)
-        .push(widget::horizontal_space().width(Length::Fill))
+        .push(widget::space().width(Length::Fill))
         .push(vol_ico)
         .push(volume_slider)
         .align_y(Alignment::Center)
@@ -286,7 +286,7 @@ fn view_playback_controls_and_options(
     
     widget::column::with_capacity(3)
         .push(controls)
-        .push(widget::vertical_space().height(Length::Fixed(10.0)))
+        .push(widget::space().height(Length::Fixed(10.0)))
         .push(options_row)
         .align_x(cosmic::iced::alignment::Horizontal::Center)
         .into()
@@ -295,6 +295,7 @@ fn view_playback_controls_and_options(
 /// Renders the Queue Page (Fila tab content)
 ///
 /// Layout: Centered column with [Large Cover] | [Track Info] | [Progress] | [Controls] | [Options]
+#[allow(clippy::too_many_arguments)]
 pub fn view(
     current_track: Option<&Arc<Track>>,
     covers: &HashMap<i64, widget::image::Handle>,
@@ -350,9 +351,9 @@ pub fn view(
     // Main layout
     let content = widget::column::with_capacity(5)
         .push(track_info)
-        .push(widget::vertical_space().height(Length::Fixed(20.0)))
+        .push(widget::space().height(Length::Fixed(20.0)))
         .push(timeline)
-        .push(widget::vertical_space().height(Length::Fixed(20.0)))
+        .push(widget::space().height(Length::Fixed(20.0)))
         .push(controls)
         .align_x(cosmic::iced::alignment::Horizontal::Center);
     

@@ -1,6 +1,6 @@
 // Based on libcosmic's Stack but with drag_destinations propagation fixed.
 
-use cosmic::iced::core::event::{self, Event};
+use cosmic::iced::core::event::Event;
 use cosmic::iced::core::layout;
 use cosmic::iced::core::mouse;
 use cosmic::iced::core::overlay;
@@ -75,7 +75,7 @@ where
     }
 
     fn layout(
-        &self,
+        &mut self,
         tree: &mut Tree,
         renderer: &Renderer,
         limits: &layout::Limits,
@@ -86,9 +86,11 @@ where
             return layout::Node::new(limits.resolve(self.width, self.height, Size::ZERO));
         }
 
-        let base = self.children[0]
-            .as_widget()
-            .layout(&mut tree.children[0], renderer, &limits);
+        let base = self.children[0].as_widget_mut().layout(
+            &mut tree.children[0],
+            renderer,
+            &limits,
+        );
 
         let size = limits.resolve(self.width, self.height, base.size());
         let limits = layout::Limits::new(Size::ZERO, size);
@@ -96,9 +98,9 @@ where
         let nodes = std::iter::once(base)
             .chain(
                 self.children[1..]
-                    .iter()
+                    .iter_mut()
                     .zip(&mut tree.children[1..])
-                    .map(|(layer, tree)| layer.as_widget().layout(tree, renderer, &limits)),
+                    .map(|(layer, tree)| layer.as_widget_mut().layout(tree, renderer, &limits)),
             )
             .collect();
 
@@ -106,69 +108,77 @@ where
     }
 
     fn operate(
-        &self,
+        &mut self,
         tree: &mut Tree,
         layout: Layout<'_>,
         renderer: &Renderer,
         operation: &mut dyn Operation,
     ) {
-        operation.container(None, layout.bounds(), &mut |operation| {
+        operation.container(None, layout.bounds());
+        operation.traverse(&mut |operation| {
             self.children
-                .iter()
+                .iter_mut()
                 .zip(&mut tree.children)
                 .zip(layout.children())
                 .for_each(|((child, state), layout)| {
                     child
-                        .as_widget()
+                        .as_widget_mut()
                         .operate(state, layout, renderer, operation);
                 });
         });
     }
 
-    fn on_event(
+    fn update(
         &mut self,
         tree: &mut Tree,
-        event: Event,
+        event: &Event,
         layout: Layout<'_>,
         mut cursor: mouse::Cursor,
         renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
-    ) -> event::Status {
-        let is_over = cursor.is_over(layout.bounds());
+    ) {
+        if self.children.is_empty() {
+            return;
+        }
 
-        self.children
+        let is_over = cursor.is_over(layout.bounds());
+        let end = self.children.len() - 1;
+
+        for (i, ((child, state), layout)) in self
+            .children
             .iter_mut()
             .rev()
             .zip(tree.children.iter_mut().rev())
             .zip(layout.children().rev())
-            .map(|((child, state), layout)| {
-                let status = child.as_widget_mut().on_event(
-                    state,
-                    event.clone(),
-                    layout,
-                    cursor,
-                    renderer,
-                    clipboard,
-                    shell,
-                    viewport,
-                );
+            .enumerate()
+        {
+            child.as_widget_mut().update(
+                state,
+                event,
+                layout,
+                cursor,
+                renderer,
+                clipboard,
+                shell,
+                viewport,
+            );
 
-                if is_over && cursor != mouse::Cursor::Unavailable {
-                    let interaction = child
-                        .as_widget()
-                        .mouse_interaction(state, layout, cursor, viewport, renderer);
+            if shell.is_event_captured() {
+                return;
+            }
 
-                    if interaction != mouse::Interaction::None {
-                        cursor = mouse::Cursor::Unavailable;
-                    }
+            if i < end && is_over && !cursor.is_levitating() {
+                let interaction = child
+                    .as_widget()
+                    .mouse_interaction(state, layout, cursor, viewport, renderer);
+
+                if interaction != mouse::Interaction::None {
+                    cursor = cursor.levitate();
                 }
-
-                status
-            })
-            .find(|&status| status == event::Status::Captured)
-            .unwrap_or(event::Status::Ignored)
+            }
+        }
     }
 
     fn mouse_interaction(
@@ -271,11 +281,19 @@ where
     fn overlay<'b>(
         &'b mut self,
         tree: &'b mut Tree,
-        layout: Layout<'_>,
+        layout: Layout<'b>,
         renderer: &Renderer,
+        viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
-        overlay::from_children(&mut self.children, tree, layout, renderer, translation)
+        overlay::from_children(
+            &mut self.children,
+            tree,
+            layout,
+            renderer,
+            viewport,
+            translation,
+        )
     }
 
     fn drag_destinations(

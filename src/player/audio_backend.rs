@@ -70,7 +70,7 @@ impl std::fmt::Debug for AudioBackend {
             .field("state", &self.state)
             .field("volume", &self.volume)
             .field("duration", &self.duration)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -268,7 +268,7 @@ impl AudioBackend {
         match self.state {
             PlaybackState::Playing => self.pause(),
             PlaybackState::Paused => self.play(),
-            _ => {}
+            PlaybackState::Stopped => {}
         }
     }
 

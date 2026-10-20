@@ -202,7 +202,7 @@ fn album_card(
     widget::button::custom(widget::container(content).padding(10).style(
         move |theme: &cosmic::Theme| {
             // Get base background color from theme
-            let bg = theme.cosmic().background.base;
+            let bg = theme.cosmic().background(false).base;
 
             // The card overlay color (10% lighter, 30% opacity)
             let overlay_color = cosmic::iced::Color::from_rgba(

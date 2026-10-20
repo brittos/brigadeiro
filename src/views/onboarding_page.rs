@@ -44,7 +44,7 @@ pub fn view(use_dark_text: bool) -> Element<'static, Message> {
                     .push(subtitle),
             )
             .push(description)
-            .push(widget::vertical_space().height(Length::Fixed(16.0)))
+            .push(widget::space().height(Length::Fixed(16.0)))
             .push(add_button),
     )
     .width(Length::Fill)
