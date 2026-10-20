@@ -285,6 +285,16 @@ pub enum Message {
     RemoveTrackFromPlaylist(i64, i64),
     PlaylistsScrolled(cosmic::iced::widget::scrollable::Viewport),
     PlaylistTracksLoaded(Vec<crate::model::track::Track>),
+    /// Reload the tracks of the playlist being viewed (keeps edit mode)
+    ReloadPlaylistTracks(i64),
+    /// The contents of a playlist changed: refresh counts and the open page
+    PlaylistTracksChanged(i64),
+    /// Toggle the "Add to playlist" popover for a track
+    OpenAddToPlaylistMenu(i64),
+    /// Close the "Add to playlist" popover of a track (ignored if another is open)
+    CloseAddToPlaylistMenu(i64),
+    /// Create a new playlist and add the track to it
+    CreatePlaylistWithTrack(i64),
     // Favorites
     /// Toggle the favorite flag of a track (by track id)
     ToggleFavorite(i64),
@@ -1203,6 +1213,11 @@ impl cosmic::Application for AppModel {
             | Message::TogglePlaylistEditMode(_)
             | Message::OpenPlaylistDetail(_)
             | Message::PlaylistTracksLoaded(_)
+            | Message::ReloadPlaylistTracks(_)
+            | Message::PlaylistTracksChanged(_)
+            | Message::OpenAddToPlaylistMenu(_)
+            | Message::CloseAddToPlaylistMenu(_)
+            | Message::CreatePlaylistWithTrack(_)
             | Message::AddTrackToPlaylist(_, _)
             | Message::RemoveTrackFromPlaylist(_, _) => self.update_playlists(message),
 
@@ -2419,6 +2434,10 @@ impl AppModel {
             Message::OpenPlaylistDetail(id) => {
                 self.current_view = AppView::PlaylistDetail(id);
                 self.playlist_edit_mode = false;
+                self.add_to_playlist_menu = None;
+                return self.update_playlists(Message::ReloadPlaylistTracks(id));
+            }
+            Message::ReloadPlaylistTracks(id) => {
                 let db = self.database.clone();
                 return Task::perform(
                     async move {
@@ -2439,7 +2458,49 @@ impl AppModel {
             Message::PlaylistTracksLoaded(tracks) => {
                 self.playlist_tracks = tracks;
             }
+            Message::PlaylistTracksChanged(playlist_id) => {
+                let mut tasks = vec![self.update_playlists(Message::LoadPlaylists)];
+                if self.current_view == AppView::PlaylistDetail(playlist_id) {
+                    tasks.push(self.update_playlists(Message::ReloadPlaylistTracks(playlist_id)));
+                }
+                return Task::batch(tasks);
+            }
+            Message::OpenAddToPlaylistMenu(track_id) => {
+                self.add_to_playlist_menu = if self.add_to_playlist_menu == Some(track_id) {
+                    None
+                } else {
+                    Some(track_id)
+                };
+            }
+            Message::CloseAddToPlaylistMenu(track_id) => {
+                if self.add_to_playlist_menu == Some(track_id) {
+                    self.add_to_playlist_menu = None;
+                }
+            }
+            Message::CreatePlaylistWithTrack(track_id) => {
+                self.add_to_playlist_menu = None;
+                let db = self.database.clone();
+                let title = fl!("new-playlist");
+                return Task::perform(
+                    async move {
+                        let Some(db) = db else { return None };
+                        tokio::task::spawn_blocking(move || {
+                            let playlist_id = db.create_playlist(title, None).ok()?;
+                            let _ = db.add_track_to_playlist(playlist_id, track_id);
+                            Some(playlist_id)
+                        })
+                        .await
+                        .ok()
+                        .flatten()
+                    },
+                    |playlist_id| {
+                        playlist_id.map_or(Message::LoadPlaylists, Message::PlaylistTracksChanged)
+                    },
+                )
+                .map(cosmic::Action::App);
+            }
             Message::AddTrackToPlaylist(playlist_id, track_id) => {
+                self.add_to_playlist_menu = None;
                 let db = self.database.clone();
                 return Task::perform(
                     async move {
@@ -2450,7 +2511,7 @@ impl AppModel {
                             .await;
                         }
                     },
-                    |()| Message::NoOp,
+                    move |()| Message::PlaylistTracksChanged(playlist_id),
                 )
                 .map(cosmic::Action::App);
             }
@@ -2465,7 +2526,7 @@ impl AppModel {
                             .await;
                         }
                     },
-                    move |()| Message::OpenPlaylistDetail(playlist_id),
+                    move |()| Message::PlaylistTracksChanged(playlist_id),
                 )
                 .map(cosmic::Action::App);
             }
